@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cloud Copy — MEGA ↔ PikPak</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">⇄</span>
+        <div>
+          <h1>Cloud Copy</h1>
+          <p class="tagline">MEGA ↔ PikPak local transfer</p>
+        </div>
+      </div>
+      <div class="auth-strip" id="authStrip">
+        <div class="auth-card" data-provider="mega">
+          <div class="auth-head">
+            <strong>MEGA</strong>
+            <span class="badge" id="megaBadge">offline</span>
+          </div>
+          <form class="login-form" id="megaLogin">
+            <input type="email" name="username" placeholder="Email" required autocomplete="username" />
+            <input type="password" name="password" placeholder="Password" required autocomplete="current-password" />
+            <input type="password" name="totp_secret" placeholder="TOTP secret (base32, recommended)" autocomplete="off" spellcheck="false" />
+            <input type="text" name="mfa_code" placeholder="Or one-time 6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+            <button type="submit">Connect</button>
+          </form>
+          <div class="auth-connected hidden" id="megaConnected">
+            <span id="megaUser"></span>
+            <span class="muted small hidden" id="megaTotpHint">2FA auto</span>
+            <button type="button" class="ghost" data-logout="mega">Logout</button>
+          </div>
+        </div>
+        <div class="auth-card" data-provider="pikpak">
+          <div class="auth-head">
+            <strong>PikPak</strong>
+            <span class="badge" id="pikpakBadge">offline</span>
+          </div>
+          <form class="login-form" id="pikpakLogin">
+            <input type="text" name="username" placeholder="Email / phone" required autocomplete="username" />
+            <input type="password" name="password" placeholder="Password" required autocomplete="current-password" />
+            <button type="submit">Connect</button>
+          </form>
+          <div class="auth-connected hidden" id="pikpakConnected">
+            <span id="pikpakUser"></span>
+            <button type="button" class="ghost" data-logout="pikpak">Logout</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <div class="direction">
+        <label>Direction</label>
+        <div class="dir-toggle">
+          <button type="button" class="dir-btn active" data-dir="mega_to_pikpak">MEGA → PikPak</button>
+          <button type="button" class="dir-btn" data-dir="pikpak_to_mega">PikPak → MEGA</button>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" id="refreshBtn" class="ghost">Refresh</button>
+        <button type="button" id="transferBtn" class="primary" disabled>Transfer selected</button>
+      </div>
+    </section>
+
+    <main class="panes">
+      <section class="pane" id="leftPane">
+        <header class="pane-header">
+          <div>
+            <h2 id="leftTitle">Source</h2>
+            <nav class="crumbs" id="leftCrumbs"></nav>
+          </div>
+          <button type="button" class="ghost small" data-up="left">↑ Up</button>
+        </header>
+        <div class="file-table-wrap">
+          <table class="file-table">
+            <thead>
+              <tr>
+                <th class="col-check"><input type="checkbox" id="leftSelectAll" /></th>
+                <th>Name</th>
+                <th class="col-size">Size</th>
+              </tr>
+            </thead>
+            <tbody id="leftBody"></tbody>
+          </table>
+          <p class="empty" id="leftEmpty">Connect accounts to browse files.</p>
+        </div>
+      </section>
+
+      <section class="pane" id="rightPane">
+        <header class="pane-header">
+          <div>
+            <h2 id="rightTitle">Destination</h2>
+            <nav class="crumbs" id="rightCrumbs"></nav>
+          </div>
+          <button type="button" class="ghost small" data-up="right">↑ Up</button>
+        </header>
+        <div class="file-table-wrap">
+          <table class="file-table">
+            <thead>
+              <tr>
+                <th class="col-check"></th>
+                <th>Name</th>
+                <th class="col-size">Size</th>
+              </tr>
+            </thead>
+            <tbody id="rightBody"></tbody>
+          </table>
+          <p class="empty" id="rightEmpty">Connect accounts to browse files.</p>
+        </div>
+      </section>
+    </main>
+
+    <section class="jobs">
+      <header class="jobs-header">
+        <h2>Transfers</h2>
+        <div class="jobs-header-right">
+          <span class="muted" id="wsStatus">connecting…</span>
+          <button type="button" class="ghost small" id="clearTempBtn" title="Delete local transfer temp files">Clear temp</button>
+        </div>
+      </header>
+      <p class="muted paths-line" id="tempPathLine">Temp folder: …</p>
+      <div class="jobs-list" id="jobsList">
+        <p class="empty">No transfers yet.</p>
+      </div>
+    </section>
+
+    <div class="toast hidden" id="toast"></div>
+  </div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

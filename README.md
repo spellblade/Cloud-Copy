@@ -4,7 +4,7 @@ Local web app that transfers files between **MEGA** and **PikPak** in both direc
 
 **Transfer model:** this is a **local relay**, not pure server-side cloud-to-cloud. Each file is downloaded from the source cloud to your PC (temp folder), then uploaded to the destination. It uses your bandwidth and disk. True MEGA↔PikPak server-side copy is not offered by either provider for private accounts.
 
-## Features (v1.0.0)
+## Features (v1.0.1)
 
 - Connect MEGA and PikPak accounts
 - Dual-pane file browser (source / destination)
@@ -15,41 +15,82 @@ Local web app that transfers files between **MEGA** and **PikPak** in both direc
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.11+ (`python3` on Linux/WSL)
 - Network access to MEGA and PikPak
 
-## Install
+## Virtual environment (important)
 
-`mega.py` pins an old `tenacity` that breaks on Python 3.11+. Use the install script (recommended):
+`.venv/` is listed in **`.gitignore`** and is **not** committed to git.
+
+- Create a **new** venv on each machine / OS after clone.
+- **Do not copy** a Windows `.venv` into Linux/WSL (or the reverse). The binaries are platform-specific; a Windows venv will fail under Linux with errors like “No such file or directory” for `.venv/bin/python`.
+- If you switch OS in the same folder, delete `.venv` and recreate it for that OS.
+
+`mega.py` pins an old `tenacity` that breaks on Python 3.11+. Install core packages first, then `mega.py` with `--no-deps` (install scripts do this).
+
+### Windows (PowerShell)
+
+**Script (recommended):**
 
 ```powershell
-cd D:\cloud-copy
+cd D:\cloud-copy   # or your clone path
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 .\.venv\Scripts\Activate.ps1
 ```
 
-Manual equivalent:
+**Manual:**
 
 ```powershell
+cd D:\cloud-copy
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install fastapi "uvicorn[standard]" httpx pydantic pydantic-settings pikpakapi boto3 python-multipart requests pycryptodome "tenacity>=8.2.0"
+python -m pip install -U pip
+pip install fastapi "uvicorn[standard]" httpx pydantic pydantic-settings pikpakapi boto3 python-multipart requests pycryptodome "tenacity>=8.2.0" pyotp
 pip install mega.py --no-deps
 ```
 
-## Run
+**Run** (with venv activated, or use full path):
 
 ```powershell
 uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-Open **http://127.0.0.1:8000**
-
-Or:
-
-```powershell
+# or:
+.\scripts\run.ps1
+# or:
 python -m app.main
 ```
+
+### Linux / WSL (bash)
+
+**Script (recommended):**
+
+```bash
+cd ~/projects/cloud-copy   # or your clone path
+bash scripts/install.sh
+source .venv/bin/activate
+```
+
+**Manual:**
+
+```bash
+cd ~/projects/cloud-copy
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+pip install fastapi "uvicorn[standard]" httpx pydantic pydantic-settings pikpakapi boto3 python-multipart requests pycryptodome "tenacity>=8.2.0" pyotp
+pip install mega.py --no-deps
+```
+
+**Run** (with venv activated, or use full path):
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+# or:
+bash scripts/run.sh
+# or:
+python -m app.main
+```
+
+Open **http://127.0.0.1:8000** in your browser.
 
 ## How to use
 
@@ -92,22 +133,22 @@ Source cloud  →  download to your PC  →  upload  →  Destination cloud
                  (~/.cloud-copy/temp/)
 ```
 
-### Local paths (Windows)
+### Local paths
 
-| What | Default path |
-|------|----------------|
-| App data | `C:\Users\<you>\.cloud-copy\` |
-| **Transfer temp** (downloads in transit) | `C:\Users\<you>\.cloud-copy\temp\` |
-| Saved logins | `C:\Users\<you>\.cloud-copy\credentials.json` |
+| What | Windows | Linux / WSL |
+|------|---------|-------------|
+| App data | `C:\Users\<you>\.cloud-copy\` | `~/.cloud-copy/` |
+| **Transfer temp** | `…\.cloud-copy\temp\` | `~/.cloud-copy/temp/` |
+| Saved logins | `…\credentials.json` | `~/.cloud-copy/credentials.json` |
 
-Each job uses a subfolder under `temp\` (UUID). Successful jobs are cleaned automatically; crashed/cancelled jobs can leave leftovers.
+Each job uses a subfolder under `temp` (UUID). Successful jobs are cleaned automatically; crashed/cancelled jobs can leave leftovers.
 
 **Clear temp:**
 
 - In the UI: **Clear temp** (Transfers section), or  
 - API: `POST http://127.0.0.1:8000/api/system/clear-temp`  
 - Paths info: `GET http://127.0.0.1:8000/api/system/paths`  
-- Manual: delete everything inside `\.cloud-copy\temp\` (not while a transfer is mid-download).
+- Manual: delete everything inside the temp folder (not while a transfer is mid-download).
 
 ## API (local)
 
@@ -142,10 +183,17 @@ Each job uses a subfolder under `temp\` (UUID). Successful jobs are cleaned auto
 
 ## Development
 
-```powershell
-pip install -r requirements.txt
+With the venv activated:
+
+```bash
+# optional extras
+pip install pytest pytest-asyncio
+
+pytest
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+Note: a plain `pip install -r requirements.txt` may fail resolving `mega.py` vs `tenacity`. Prefer the install scripts or the two-step install (deps, then `mega.py --no-deps`).
 
 ## License
 GNU GENERAL PUBLIC LICENSE

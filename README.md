@@ -148,5 +148,5 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ## License
-
+GNU GENERAL PUBLIC LICENSE
 Personal / private use project. Third-party libraries retain their own licenses.

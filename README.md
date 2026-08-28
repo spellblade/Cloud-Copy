@@ -1,5 +1,8 @@
 # Cloud Copy — MEGA ↔ PikPak
 
+[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](VERSION)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+
 Local web app that transfers files between **MEGA** and **PikPak** in both directions.
 
 **Transfer model:** this is a **local relay**, not pure server-side cloud-to-cloud. Each file is downloaded from the source cloud to your PC (temp folder), then uploaded to the destination. It uses your bandwidth and disk. True MEGA↔PikPak server-side copy is not offered by either provider for private accounts.
@@ -181,20 +184,34 @@ Each job uses a subfolder under `temp` (UUID). Successful jobs are cleaned autom
 - Large libraries transfer sequentially (one job worker).
 - Comply with each service’s terms of use.
 
+## Documentation
+
+- [Setup](docs/setup.md)
+- [Usage](docs/usage.md)
+- [Architecture](docs/architecture.md)
+- [Providers](docs/providers.md)
+- [Coding standards](docs/coding-standards.md)
+- [Security](docs/security.md)
+- [Changelog](CHANGELOG.md)
+
 ## Development
 
 With the venv activated:
 
 ```bash
-# optional extras
-pip install pytest pytest-asyncio
-
-pytest
+pip install -r requirements-dev.txt
+python -m pytest
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+Use `python -m pytest` (not bare `pytest`) so the repo root is on `sys.path` and `import app` works. CI does the same.
+
 Note: a plain `pip install -r requirements.txt` may fail resolving `mega.py` vs `tenacity`. Prefer the install scripts or the two-step install (deps, then `mega.py --no-deps`).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
-GNU GENERAL PUBLIC LICENSE
-Personal / private use project. Third-party libraries retain their own licenses.
+
+[GNU GPL v3](LICENSE). Third-party libraries retain their own licenses.

@@ -1,0 +1,15 @@
+[project]
+name = "cloud-copy"
+version = "1.0.1"
+description = "Local MEGA ↔ PikPak file transfer web app"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GNU General Public License v3.0" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

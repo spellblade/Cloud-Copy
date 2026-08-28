@@ -13,3 +13,9 @@ temp/
 .vscode/
 transfer.py
 CACHEDIR.TAG
+.kilo/kilo.jsonc
+.ruff_cache/
+coverage.xml
+htmlcov/
+.coverage
+

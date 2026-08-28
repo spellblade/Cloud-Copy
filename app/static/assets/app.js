@@ -345,6 +345,61 @@
   }
 
   // Event wiring
+  (function setupTotpInfoTip() {
+    const btn = $("#megaMfaInfo");
+    const bubble = $("#megaMfaHint");
+    const wrap = btn && btn.closest(".input-with-info-label");
+    if (!btn || !bubble || !wrap) return;
+
+    let closeTimer;
+    let pinned = false;
+    const isOpen = () => !bubble.classList.contains("hidden");
+
+    const open = () => {
+      clearTimeout(closeTimer);
+      bubble.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+    };
+    const close = () => {
+      clearTimeout(closeTimer);
+      pinned = false;
+      bubble.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+    };
+    const delayedClose = () => {
+      if (pinned) return;
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        if (pinned) return;
+        if (!wrap.matches(":hover") && !bubble.matches(":hover")) close();
+      }, 150);
+    };
+
+    wrap.addEventListener("mouseenter", open);
+    wrap.addEventListener("mouseleave", delayedClose);
+    bubble.addEventListener("mouseenter", open);
+    bubble.addEventListener("mouseleave", delayedClose);
+
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (pinned) {
+        close();
+        return;
+      }
+      pinned = true;
+      open();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (wrap.contains(e.target) || bubble.contains(e.target)) return;
+      close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
+  })();
+
   $$(".dir-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       $$(".dir-btn").forEach((b) => b.classList.remove("active"));
@@ -354,6 +409,7 @@
     });
   });
 
+  // Mega and PikPak login forms
   $("#megaLogin").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Project documentation retrofit (`docs/`, GitHub issue/PR templates, CI workflow)
 
+### Changed
+
+### Fixed
+
 ## [1.0.1] - 2026-08-17
 
 ### Added
@@ -18,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linux/WSL install and run scripts (`scripts/install.sh`, `scripts/run.sh`)
 - Dual-platform venv instructions in README (Windows and Linux are not interchangeable)
 - `VERSION` as the documented source of truth (aligned with `app.__version__`)
+
+### Changed
 
 ### Fixed
 
@@ -34,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Filename preservation on PikPak (rename-back; `(n)` suffix if name is taken)
 - Transfer cancel, retry, and temp-folder clear
 - Clearer MEGA `EOVERQUOTA` messages
+
+### Changed
+
+### Fixed
 
 [Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.1...HEAD
 [1.0.1]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.0...v1.0.1

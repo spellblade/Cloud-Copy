@@ -200,9 +200,11 @@ With the venv activated:
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+python -m pytest
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+Use `python -m pytest` (not bare `pytest`) so the repo root is on `sys.path` and `import app` works. CI does the same.
 
 Note: a plain `pip install -r requirements.txt` may fail resolving `mega.py` vs `tenacity`. Prefer the install scripts or the two-step install (deps, then `mega.py --no-deps`).
 

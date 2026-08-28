@@ -22,4 +22,4 @@ jobs:
           pip install mega.py --no-deps
           pip install -r requirements-dev.txt
       - name: Tests
-        run: pytest
+        run: python -m pytest

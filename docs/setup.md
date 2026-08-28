@@ -54,5 +54,7 @@ Open http://127.0.0.1:8000
 
 ```bash
 pip install -r requirements-dev.txt   # if not already
-pytest
+python -m pytest
 ```
+
+Use `python -m pytest` so the project root is on `sys.path` (`import app`). Bare `pytest` often fails with `No module named 'app'`.

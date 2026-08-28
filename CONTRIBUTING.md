@@ -22,8 +22,10 @@ Follow [docs/setup.md](docs/setup.md). Summary:
 
 ```bash
 source .venv/bin/activate   # Windows: .\.venv\Scripts\Activate.ps1
-pytest
+python -m pytest
 ```
+
+Use `python -m pytest` so `app` is importable (CI uses the same command).
 
 Install `mega.py` with `--no-deps` after other packages (see setup docs). A plain `pip install -r requirements.txt` may fail on the `tenacity` pin.
 

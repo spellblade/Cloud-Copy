@@ -234,6 +234,21 @@
     btn.disabled = !(both && state.left.selected.size > 0);
   }
 
+  function failedStageLabel(job) {
+    if (!job || !job.stage) return null;
+    const src = job.direction === "mega_to_pikpak" ? "MEGA" : "PikPak";
+    const dst = job.direction === "mega_to_pikpak" ? "PikPak" : "MEGA";
+    const map = {
+      download: `${src} download`,
+      upload: `${dst} upload`,
+      mkdir: "Create folder",
+      listing: "List folder",
+      auth: "Sign-in",
+      queued: "Queue",
+    };
+    return map[job.stage] || job.stage;
+  }
+
   function renderJobs() {
     const list = $("#jobsList");
     if (!state.jobs.length) {
@@ -247,10 +262,15 @@
       const dirLabel =
         job.direction === "mega_to_pikpak" ? "MEGA → PikPak" : "PikPak → MEGA";
       const pct = Math.max(0, Math.min(100, job.progress || 0));
+      const stageLabel = failedStageLabel(job);
+      const statusText =
+        job.status === "failed" && stageLabel
+          ? `failed · ${stageLabel}`
+          : job.status;
       card.innerHTML = `
         <div class="job-top">
           <div class="job-title">${dirLabel} · ${job.source_ids.length} item(s)</div>
-          <span class="job-status ${job.status}">${job.status}</span>
+          <span class="job-status ${job.status}">${escapeHtml(statusText)}</span>
         </div>
         <div class="job-meta">
           ${job.current_file ? escapeHtml(job.current_file) + " · " : ""}

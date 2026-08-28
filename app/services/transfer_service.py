@@ -164,7 +164,7 @@ class TransferService:
                 continue
             try:
                 await self._run_job(job)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.exception("Job %s failed", job_id)
                 _mark_failed(job, exc)
                 await self._notify(job)
@@ -287,7 +287,7 @@ class TransferService:
         dst: Any,
         file_id: str,
         file_name: str,
-        dest_parent_id: Optional[str],
+        dest_parent_id: str | None,
         temp_root: Path,
     ) -> None:
         if self._cancelled(job.id):

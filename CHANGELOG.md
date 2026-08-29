@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linux/WSL install and run scripts (`scripts/install.sh`, `scripts/run.sh`)
 - Dual-platform venv instructions in README (Windows and Linux are not interchangeable)
 - `VERSION` as the documented source of truth (aligned with `app.__version__`)
+- Failed transfer jobs show the stage (e.g. MEGA download vs PikPak upload)
 
 ### Changed
 

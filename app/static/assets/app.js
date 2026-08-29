@@ -234,6 +234,21 @@
     btn.disabled = !(both && state.left.selected.size > 0);
   }
 
+  function failedStageLabel(job) {
+    if (!job || !job.stage) return null;
+    const src = job.direction === "mega_to_pikpak" ? "MEGA" : "PikPak";
+    const dst = job.direction === "mega_to_pikpak" ? "PikPak" : "MEGA";
+    const map = {
+      download: `${src} download`,
+      upload: `${dst} upload`,
+      mkdir: "Create folder",
+      listing: "List folder",
+      auth: "Sign-in",
+      queued: "Queue",
+    };
+    return map[job.stage] || job.stage;
+  }
+
   function renderJobs() {
     const list = $("#jobsList");
     if (!state.jobs.length) {
@@ -247,10 +262,15 @@
       const dirLabel =
         job.direction === "mega_to_pikpak" ? "MEGA → PikPak" : "PikPak → MEGA";
       const pct = Math.max(0, Math.min(100, job.progress || 0));
+      const stageLabel = failedStageLabel(job);
+      const statusText =
+        job.status === "failed" && stageLabel
+          ? `failed · ${stageLabel}`
+          : job.status;
       card.innerHTML = `
         <div class="job-top">
           <div class="job-title">${dirLabel} · ${job.source_ids.length} item(s)</div>
-          <span class="job-status ${job.status}">${job.status}</span>
+          <span class="job-status ${job.status}">${escapeHtml(statusText)}</span>
         </div>
         <div class="job-meta">
           ${job.current_file ? escapeHtml(job.current_file) + " · " : ""}
@@ -345,6 +365,61 @@
   }
 
   // Event wiring
+  (function setupTotpInfoTip() {
+    const btn = $("#megaMfaInfo");
+    const bubble = $("#megaMfaHint");
+    const wrap = btn && btn.closest(".input-with-info-label");
+    if (!btn || !bubble || !wrap) return;
+
+    let closeTimer;
+    let pinned = false;
+    const isOpen = () => !bubble.classList.contains("hidden");
+
+    const open = () => {
+      clearTimeout(closeTimer);
+      bubble.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+    };
+    const close = () => {
+      clearTimeout(closeTimer);
+      pinned = false;
+      bubble.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+    };
+    const delayedClose = () => {
+      if (pinned) return;
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        if (pinned) return;
+        if (!wrap.matches(":hover") && !bubble.matches(":hover")) close();
+      }, 150);
+    };
+
+    wrap.addEventListener("mouseenter", open);
+    wrap.addEventListener("mouseleave", delayedClose);
+    bubble.addEventListener("mouseenter", open);
+    bubble.addEventListener("mouseleave", delayedClose);
+
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (pinned) {
+        close();
+        return;
+      }
+      pinned = true;
+      open();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (wrap.contains(e.target) || bubble.contains(e.target)) return;
+      close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
+  })();
+
   $$(".dir-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       $$(".dir-btn").forEach((b) => b.classList.remove("active"));
@@ -354,6 +429,7 @@
     });
   });
 
+  // Mega and PikPak login forms
   $("#megaLogin").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);

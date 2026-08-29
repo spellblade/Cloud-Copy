@@ -5,12 +5,12 @@ import logging
 import shutil
 import time
 import uuid
-from datetime import datetime
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from app.config import settings
-from app.models import Direction, TransferJob, TransferStatus
+from app.models import Direction, TransferJob, TransferStage, TransferStatus
 from app.services.mega_client import mega_adapter
 from app.services.pikpak_client import pikpak_adapter
 
@@ -23,7 +23,7 @@ def _rmtree_retry(path: Path, attempts: int = 5, delay: float = 0.25) -> None:
     """Remove a directory tree; retry on Windows file-lock races."""
     if not path.exists():
         return
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
     for i in range(attempts):
         try:
             shutil.rmtree(path)
@@ -34,8 +34,8 @@ def _rmtree_retry(path: Path, attempts: int = 5, delay: float = 0.25) -> None:
     # Final best-effort: ignore residual lock errors so the job can finish
     try:
         shutil.rmtree(path, ignore_errors=True)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not fully clean temp dir %s: %s", path, exc)
     if last_exc:
         logger.warning("Could not fully clean temp dir %s: %s", path, last_exc)
 
@@ -46,7 +46,7 @@ class TransferService:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._cancel_flags: dict[str, asyncio.Event] = {}
         self._listeners: list[Listener] = []
-        self._worker_task: Optional[asyncio.Task] = None
+        self._worker_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
 
     def add_listener(self, listener: Listener) -> None:
@@ -74,8 +74,8 @@ class TransferService:
         self,
         direction: Direction,
         source_ids: list[str],
-        dest_parent_id: Optional[str],
-        source_meta: Optional[dict[str, dict]] = None,
+        dest_parent_id: str | None,
+        source_meta: dict[str, dict] | None = None,
     ) -> TransferJob:
         job = TransferJob(
             id=str(uuid.uuid4()),
@@ -95,7 +95,7 @@ class TransferService:
     def list_jobs(self) -> list[TransferJob]:
         return sorted(self.jobs.values(), key=lambda j: j.created_at, reverse=True)
 
-    def get_job(self, job_id: str) -> Optional[TransferJob]:
+    def get_job(self, job_id: str) -> TransferJob | None:
         return self.jobs.get(job_id)
 
     async def cancel(self, job_id: str) -> TransferJob:
@@ -139,6 +139,7 @@ class TransferService:
         job.error = None
         job.message = "Re-queued"
         job.current_file = None
+        job.stage = TransferStage.queued
         self._cancel_flags[job_id] = asyncio.Event()
         self.ensure_worker()
         await self._queue.put(job.id)
@@ -163,11 +164,9 @@ class TransferService:
                 continue
             try:
                 await self._run_job(job)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.exception("Job %s failed", job_id)
-                job.status = TransferStatus.failed
-                job.error = str(exc)
-                job.message = "Failed"
+                _mark_failed(job, exc)
                 await self._notify(job)
             finally:
                 self._queue.task_done()
@@ -189,6 +188,7 @@ class TransferService:
             src, dst = pikpak_adapter, mega_adapter
 
         if not src.is_authenticated() or not dst.is_authenticated():
+            job.stage = TransferStage.auth
             raise RuntimeError("Both MEGA and PikPak must be connected")
 
         temp_root = settings.resolved_temp_dir() / job.id
@@ -209,6 +209,7 @@ class TransferService:
 
                 # Resolve metadata if missing
                 if name is None:
+                    job.stage = TransferStage.listing
                     node = await src.get_node(source_id)
                     name = node.name
                     is_dir = node.is_dir
@@ -255,13 +256,15 @@ class TransferService:
         dst: Any,
         folder_id: str,
         folder_name: str,
-        dest_parent_id: Optional[str],
+        dest_parent_id: str | None,
         temp_root: Path,
     ) -> None:
         if self._cancelled(job.id):
             return
+        job.stage = TransferStage.mkdir
         new_folder = await dst.mkdir(dest_parent_id, folder_name)
         new_parent = new_folder.id or dest_parent_id
+        job.stage = TransferStage.listing
         children = await src.list_folder(folder_id)
         for child in children:
             if self._cancelled(job.id):
@@ -284,7 +287,7 @@ class TransferService:
         dst: Any,
         file_id: str,
         file_name: str,
-        dest_parent_id: Optional[str],
+        dest_parent_id: str | None,
         temp_root: Path,
     ) -> None:
         if self._cancelled(job.id):
@@ -309,6 +312,7 @@ class TransferService:
         try:
             if self._cancelled(job.id):
                 return
+            job.stage = TransferStage.download
             local = await src.download_to_path(file_id, work, on_progress=on_dl)
             if self._cancelled(job.id):
                 job.message = "Cancelled after download"
@@ -318,6 +322,7 @@ class TransferService:
             if not local.exists():
                 raise RuntimeError(f"Download produced no file for {file_name}")
             await self._notify(job)
+            job.stage = TransferStage.upload
             await dst.upload_from_path(
                 local,
                 dest_parent_id,
@@ -381,6 +386,13 @@ class TransferService:
             "bytes_freed": freed,
             "errors": errors,
         }
+
+
+def _mark_failed(job: TransferJob, exc: BaseException) -> None:
+    job.status = TransferStatus.failed
+    job.error = str(exc)
+    label = job.stage_label()
+    job.message = f"Failed · {label}" if label else "Failed"
 
 
 def _fmt(n: int) -> str:

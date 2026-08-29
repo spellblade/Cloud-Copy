@@ -193,6 +193,7 @@ Each job uses a subfolder under `temp` (UUID). Successful jobs are cleaned autom
 - [Coding standards](docs/coding-standards.md)
 - [Security](docs/security.md)
 - [Changelog](CHANGELOG.md)
+- [Roadmap](docs/roadmap.md)
 
 ## Development
 

@@ -26,7 +26,16 @@
             <input type="email" name="username" placeholder="Email" required autocomplete="username" />
             <input type="password" name="password" placeholder="Password" required autocomplete="current-password" />
             <input type="password" name="totp_secret" placeholder="TOTP secret (base32, recommended)" autocomplete="off" spellcheck="false" />
-            <input type="text" name="mfa_code" placeholder="Or one-time 6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+            <div class="input-with-info">
+              <input type="text" name="mfa_code" placeholder="Or one-time 6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-describedby="megaMfaHint" />
+              <span class="input-with-info-label">
+                
+                <button type="button" class="info-tip" id="megaMfaInfo" aria-expanded="false" aria-controls="megaMfaHint" aria-label="TOTP code help">ⓘ</button>
+                <span class="info-tip-bubble hidden" id="megaMfaHint" role="tooltip">
+                  Prefer the TOTP secret above. If you use a 6-digit code, enter it only when it is newly generated and still has time left (codes expire about every 30 seconds).
+                </span>
+              </span>
+            </div>
             <button type="submit">Connect</button>
           </form>
           <div class="auth-connected hidden" id="megaConnected">

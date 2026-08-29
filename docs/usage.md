@@ -14,7 +14,7 @@ Prefer the **TOTP secret** (base32 from MEGA 2FA setup), not a 6-digit code.
 - Stored only in `~/.cloud-copy/credentials.json` on this machine.
 - The app mints a fresh code at login (waits if the 30s window is about to expire).
 - Optional env: `MEGA_TOTP_SECRET` (never commit this).
-- Optional one-shot 6-digit field still works.
+- Optional one-shot 6-digit field still works. Use it only with a **newly generated** code that still has time left (about 30 seconds per code). The login form warns about this.
 
 You do not need to disable 2FA.
 

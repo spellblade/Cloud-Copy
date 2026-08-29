@@ -1,7 +1,7 @@
 import pytest
 
-from app.models import TransferStatus
-from app.services.transfer_service import TransferService
+from app.models import TransferJob, TransferStage, TransferStatus
+from app.services.transfer_service import TransferService, _mark_failed
 
 
 @pytest.mark.asyncio
@@ -29,3 +29,39 @@ async def test_cancel_queued_job():
     )
     cancelled = await svc.cancel(job.id)
     assert cancelled.status in (TransferStatus.cancelled, TransferStatus.queued, TransferStatus.running)
+
+
+def test_failed_stage_label_mega_download():
+    job = TransferJob(
+        id="j1",
+        direction="mega_to_pikpak",
+        source_ids=["a"],
+        stage=TransferStage.download,
+    )
+    _mark_failed(job, RuntimeError("Read timed out"))
+    assert job.status == TransferStatus.failed
+    assert job.message == "Failed · MEGA download"
+    assert job.stage_label() == "MEGA download"
+    assert "timed out" in job.error
+
+
+def test_failed_stage_label_pikpak_upload():
+    job = TransferJob(
+        id="j2",
+        direction="mega_to_pikpak",
+        source_ids=["a"],
+        stage=TransferStage.upload,
+    )
+    _mark_failed(job, RuntimeError("SSL validation failed"))
+    assert job.message == "Failed · PikPak upload"
+
+
+def test_failed_stage_label_reverse_download():
+    job = TransferJob(
+        id="j3",
+        direction="pikpak_to_mega",
+        source_ids=["a"],
+        stage=TransferStage.download,
+    )
+    _mark_failed(job, RuntimeError("x"))
+    assert job.message == "Failed · PikPak download"

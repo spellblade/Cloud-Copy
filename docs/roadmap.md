@@ -25,7 +25,7 @@ Priority buckets (P0–P3) describe **importance**. **Implementation order** (be
 
 | Issue | Problem |
 |-------|---------|
-| [#9](https://github.com/spellblade/Cloud-Copy/issues/9) | Icon column scrolls **over** file names. **Loading** appears at the **bottom** of the table (must scroll); clicks feel unregistered. Overlay Loading in the pane. |
+| [#9](https://github.com/spellblade/Cloud-Copy/issues/9) | Sticky **NAME** header: folder/file **icons scroll over the heading** while checkboxes and names go underneath. **Loading** appears at the **bottom** of the table (must scroll). |
 | [#10](https://github.com/spellblade/Cloud-Copy/issues/10) | Warn that a 6-digit TOTP should be used only when **fresh** and still has time left. |
 
 ## P3 — Extra features
@@ -43,7 +43,7 @@ Work sequence (ease × risk × priority). **Branch** is a plain name (no link); 
 |-------|--------|----------|--------|
 | 1 | [#10](https://github.com/spellblade/Cloud-Copy/issues/10) TOTP hint | Yes | `feat/gist-backlog` |
 | 2 | [#13](https://github.com/spellblade/Cloud-Copy/issues/13) Failed stage | Yes | `feat/gist-backlog` |
-| 3 | [#9](https://github.com/spellblade/Cloud-Copy/issues/9) File-list UI | No | — |
+| 3 | [#9](https://github.com/spellblade/Cloud-Copy/issues/9) File-list UI | Yes | `feat/file-list-ui` |
 | 4 | [#5](https://github.com/spellblade/Cloud-Copy/issues/5) Folder select | No | — |
 | 5 | [#4](https://github.com/spellblade/Cloud-Copy/issues/4) Live progress | No | — |
 | 6 | [#6](https://github.com/spellblade/Cloud-Copy/issues/6) Queue stuck | No | — |

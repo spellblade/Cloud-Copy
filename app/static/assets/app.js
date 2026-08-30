@@ -173,8 +173,10 @@
       const tdName = document.createElement("td");
       const wrap = document.createElement("div");
       wrap.className = `name-cell${item.is_dir ? " folder" : ""}`;
-      wrap.innerHTML = `<span class="icon">${item.is_dir ? "📁" : "📄"}</span><span></span>`;
-      wrap.querySelector("span:last-child").textContent = item.name;
+      wrap.innerHTML = `<span class="icon">${item.is_dir ? "📁" : "📄"}</span><span class="name-text"></span>`;
+      const nameEl = wrap.querySelector(".name-text");
+      nameEl.textContent = item.name;
+      nameEl.title = item.name;
       if (item.is_dir) {
         wrap.addEventListener("dblclick", () => enterFolder(side, item));
         wrap.addEventListener("click", (e) => {

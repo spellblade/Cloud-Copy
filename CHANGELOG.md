@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Project documentation retrofit (`docs/`, GitHub issue/PR templates, CI workflow)
+- Opened GitHub issues for the gist backlog (#1-#16) and recorded them in `docs/roadmap.md` with an implementation order (ease × risk × priority, resolved vs open, and feature branch names)
 
 ### Changed
 
@@ -26,11 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- File-list **SIZE** column is nowrap with a fixed table layout so long names ellipsize instead of widening the pane (#9)
+
 ### Fixed
 
 - App version in `app/__init__.py` was still `0.1.0` while README said `1.0.0`
 - CI runs `python -m pytest` so the `app` package is importable (bare `pytest` failed with `No module named 'app'`)
 - Transfer job timestamps use timezone-aware UTC (`datetime.now(timezone.utc)`) instead of deprecated `utcnow()`
+- File pane **Loading** is a centered overlay in the visible list (no scrolling to see it) (#9)
+- Sticky **NAME** header stays above row icons while scrolling (`border-collapse: separate` + header `z-index`) (#9)
+- PikPak (and MEGA) file lists no longer show a horizontal scrollbar; size stays on one line (`532.7 KB`) (#9)
+- Hover a truncated filename to see the full name (`title` on the name span) (#9)
 
 ## [1.0.0] - 2026-07-31
 

@@ -6,8 +6,9 @@ import asyncio
 import hashlib
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import httpx
 
@@ -72,10 +73,10 @@ class PikPakAdapter:
 
     def __init__(self) -> None:
         self._client: Any = None
-        self._username: Optional[str] = None
+        self._username: str | None = None
 
     @property
-    def username(self) -> Optional[str]:
+    def username(self) -> str | None:
         # Account used for the current PikPak session, if any.
         return self._username
 
@@ -187,12 +188,12 @@ class PikPakAdapter:
             parent_id=item.get("parent_id") or None,
         )
 
-    async def list_folder(self, folder_id: Optional[str] = None) -> list[FileNode]:
+    async def list_folder(self, folder_id: str | None = None) -> list[FileNode]:
         # Paginated listing of ``folder_id`` (root if omitted); folders first, then name.
         client = self._require()
         parent = folder_id or None
         items: list[FileNode] = []
-        page_token: Optional[str] = None
+        page_token: str | None = None
         while True:
             data = await client.file_list(
                 size=100,
@@ -213,7 +214,7 @@ class PikPakAdapter:
         info = await client.offline_file_info(file_id)
         return self._file_to_node(info)
 
-    async def mkdir(self, parent_id: Optional[str], name: str) -> FileNode:
+    async def mkdir(self, parent_id: str | None, name: str) -> FileNode:
         # Create folder, or reuse an existing folder with the same name.
         parent = parent_id or None
         existing = await self.list_folder(parent)
@@ -229,7 +230,7 @@ class PikPakAdapter:
             return await self._ensure_final_name(node.id, name, parent)
         return node
 
-    async def _names_in_folder(self, parent_id: Optional[str]) -> set[str]:
+    async def _names_in_folder(self, parent_id: str | None) -> set[str]:
         # Set of existing names in a folder — used to avoid overwrites and pick ``(1)``.
         items = await self.list_folder(parent_id or None)
         return {item.name for item in items}
@@ -238,7 +239,7 @@ class PikPakAdapter:
         self,
         file_id: str,
         target_name: str,
-        parent_id: Optional[str],
+        parent_id: str | None,
     ) -> FileNode:
         # If PikPak assigned a different name, rename to target_name when possible.
         client = self._require()
@@ -286,7 +287,7 @@ class PikPakAdapter:
         self,
         file_id: str,
         dest_dir: Path,
-        on_progress: Optional[ProgressCallback] = None,
+        on_progress: ProgressCallback | None = None,
     ) -> Path:
         # Stream a PikPak file to ``dest_dir`` via the web content link.
         client = self._require()
@@ -326,9 +327,9 @@ class PikPakAdapter:
     async def upload_from_path(
         self,
         local_path: Path,
-        parent_id: Optional[str],
-        name: Optional[str] = None,
-        on_progress: Optional[ProgressCallback] = None,
+        parent_id: str | None,
+        name: str | None = None,
+        on_progress: ProgressCallback | None = None,
     ) -> FileNode:
         """ Upload a local file to PikPak.
 
@@ -410,7 +411,7 @@ class PikPakAdapter:
         gcid: str,
         size: int,
         upload_type: str,
-        on_progress: Optional[ProgressCallback] = None,
+        on_progress: ProgressCallback | None = None,
     ) -> FileNode:
         # Create the PikPak file ticket, upload FORM or S3, then repair the final name.
         client = self._require()
@@ -490,8 +491,8 @@ class PikPakAdapter:
 
     async def _cancel_incomplete_upload(
         self,
-        file_id: Optional[str],
-        task_id: Optional[str],
+        file_id: str | None,
+        task_id: str | None,
     ) -> None:
         # Best-effort delete of a half-created file/task after an upload failure.
         client = self._require()
@@ -510,7 +511,7 @@ class PikPakAdapter:
         self,
         local_path: Path,
         params: dict[str, Any],
-        on_progress: Optional[ProgressCallback],
+        on_progress: ProgressCallback | None,
     ) -> None:
         # Upload via Aliyun-compatible S3 PutObject (rclone-style, no extra checksums).
 
@@ -582,7 +583,7 @@ class PikPakAdapter:
         self,
         local_path: Path,
         form: dict[str, Any],
-        on_progress: Optional[ProgressCallback],
+        on_progress: ProgressCallback | None,
     ) -> None:
         # OSS policy-based multipart POST (UPLOAD_TYPE_FORM).
         method = (form.get("method") or "POST").upper()
@@ -608,7 +609,7 @@ class PikPakAdapter:
         for key, val in multi.items():
             if key in data or key == "file":
                 continue
-            if isinstance(val, (str, int, float)):
+            if isinstance(val, str | int | float):
                 data[str(key)] = str(val)
 
         size = local_path.stat().st_size

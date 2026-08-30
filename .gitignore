@@ -11,7 +11,7 @@ data/
 temp/
 .idea/
 .vscode/
-transfer.py
+.assets/
 CACHEDIR.TAG
 .kilo/kilo.jsonc
 .ruff_cache/

@@ -1,3 +1,5 @@
+# PikPak adapter: unofficial API login, listings, and FORM/S3 uploads with name repair.
+
 from __future__ import annotations
 
 import asyncio
@@ -18,7 +20,7 @@ ProgressCallback = Callable[[int, int], None]
 
 
 def split_filename(name: str) -> tuple[str, str]:
-    """Split 'file.v0.7.pdf' → ('file.v0.7', '.pdf'); no extension → (name, '')."""
+    # Split 'file.v0.7.pdf' → ('file.v0.7', '.pdf'); no extension → (name, '').
     p = Path(name)
     if p.suffix:
         return p.stem, p.suffix
@@ -44,10 +46,11 @@ def next_available_name(desired: str, taken: set[str]) -> str:
 
 
 def calc_gcid(path: Path) -> str:
-    """PikPak gcid: SHA1 of successive SHA1 block digests (same as rclone)."""
+    # PikPak gcid: SHA1 of successive SHA1 block digests (same as rclone).
     size = path.stat().st_size
 
     def block_size(total: int) -> int:
+        # Chunk size used by PikPak gcid (grows with file size, capped at 2 MiB).
         psize = 0x40000
         while total / psize > 0x200 and psize < 0x200000:
             psize <<= 1
@@ -65,7 +68,7 @@ def calc_gcid(path: Path) -> str:
 
 
 class PikPakAdapter:
-    """Adapter around pikpakapi plus resumable upload support."""
+    # Adapter around pikpakapi plus resumable upload support.
 
     def __init__(self) -> None:
         self._client: Any = None
@@ -73,12 +76,15 @@ class PikPakAdapter:
 
     @property
     def username(self) -> Optional[str]:
+        # Account used for the current PikPak session, if any.
         return self._username
 
     def is_authenticated(self) -> bool:
+        # True when pikpakapi holds a live access token.
         return self._client is not None and bool(getattr(self._client, "access_token", None))
 
     async def login(self, username: str, password: str, persist: bool = True) -> None:
+        # Password login, refresh the token, optionally persist credentials + encoded_token.
         from pikpakapi import PikPakApi
 
         client = PikPakApi(
@@ -108,6 +114,7 @@ class PikPakAdapter:
             )
 
     async def restore_session(self) -> bool:
+        # Restore from encoded_token, else password re-login. Returns False if nothing saved.
         saved = credential_store.get("pikpak")
         if not saved:
             return False
@@ -150,6 +157,7 @@ class PikPakAdapter:
         return False
 
     async def logout(self) -> None:
+        # Close the HTTP client, drop the session, and delete saved PikPak credentials.
         if self._client and hasattr(self._client, "httpx_client"):
             try:
                 await self._client.httpx_client.aclose()
@@ -160,11 +168,13 @@ class PikPakAdapter:
         credential_store.delete("pikpak")
 
     def _require(self) -> Any:
+        # Return the pikpakapi client or raise if not logged in.
         if self._client is None:
             raise RuntimeError("Not logged in to PikPak")
         return self._client
 
     def _file_to_node(self, item: dict[str, Any]) -> FileNode:
+        # Map a PikPak file/folder dict onto our ``FileNode``.
         kind = item.get("kind") or ""
         is_dir = "folder" in kind
         size = int(item.get("size") or 0)
@@ -178,6 +188,7 @@ class PikPakAdapter:
         )
 
     async def list_folder(self, folder_id: Optional[str] = None) -> list[FileNode]:
+        # Paginated listing of ``folder_id`` (root if omitted); folders first, then name.
         client = self._require()
         parent = folder_id or None
         items: list[FileNode] = []
@@ -197,12 +208,13 @@ class PikPakAdapter:
         return items
 
     async def get_node(self, file_id: str) -> FileNode:
+        # Fetch one file/folder by id (used when transfer meta lacks a name).
         client = self._require()
         info = await client.offline_file_info(file_id)
         return self._file_to_node(info)
 
     async def mkdir(self, parent_id: Optional[str], name: str) -> FileNode:
-        """Create folder, or reuse an existing folder with the same name."""
+        # Create folder, or reuse an existing folder with the same name.
         parent = parent_id or None
         existing = await self.list_folder(parent)
         for item in existing:
@@ -218,6 +230,7 @@ class PikPakAdapter:
         return node
 
     async def _names_in_folder(self, parent_id: Optional[str]) -> set[str]:
+        # Set of existing names in a folder — used to avoid overwrites and pick ``(1)``.
         items = await self.list_folder(parent_id or None)
         return {item.name for item in items}
 
@@ -227,7 +240,7 @@ class PikPakAdapter:
         target_name: str,
         parent_id: Optional[str],
     ) -> FileNode:
-        """If PikPak assigned a different name, rename to target_name when possible."""
+        # If PikPak assigned a different name, rename to target_name when possible.
         client = self._require()
         try:
             info = await client.offline_file_info(file_id)
@@ -275,6 +288,7 @@ class PikPakAdapter:
         dest_dir: Path,
         on_progress: Optional[ProgressCallback] = None,
     ) -> Path:
+        # Stream a PikPak file to ``dest_dir`` via the web content link.
         client = self._require()
         info = await client.get_download_url(file_id)
         name = info.get("name") or file_id
@@ -316,7 +330,7 @@ class PikPakAdapter:
         name: Optional[str] = None,
         on_progress: Optional[ProgressCallback] = None,
     ) -> FileNode:
-        """Upload a local file to PikPak.
+        """ Upload a local file to PikPak.
 
         Naming:
         - If desired name is free → keep it (rename back if API adds spurious (1)).
@@ -398,6 +412,7 @@ class PikPakAdapter:
         upload_type: str,
         on_progress: Optional[ProgressCallback] = None,
     ) -> FileNode:
+        # Create the PikPak file ticket, upload FORM or S3, then repair the final name.
         client = self._require()
         body: dict[str, Any] = {
             "kind": "drive#file",
@@ -478,6 +493,7 @@ class PikPakAdapter:
         file_id: Optional[str],
         task_id: Optional[str],
     ) -> None:
+        # Best-effort delete of a half-created file/task after an upload failure.
         client = self._require()
         try:
             if file_id:
@@ -496,7 +512,7 @@ class PikPakAdapter:
         params: dict[str, Any],
         on_progress: Optional[ProgressCallback],
     ) -> None:
-        """Upload via Aliyun-compatible S3 PutObject (rclone-style, no extra checksums)."""
+        # Upload via Aliyun-compatible S3 PutObject (rclone-style, no extra checksums).
 
         def _put() -> None:
             import boto3
@@ -568,7 +584,7 @@ class PikPakAdapter:
         form: dict[str, Any],
         on_progress: Optional[ProgressCallback],
     ) -> None:
-        """OSS policy-based multipart POST (UPLOAD_TYPE_FORM)."""
+        # OSS policy-based multipart POST (UPLOAD_TYPE_FORM).
         method = (form.get("method") or "POST").upper()
         url = form.get("url") or form.get("URL")
         if not url:
@@ -612,6 +628,7 @@ class PikPakAdapter:
             on_progress(size, size)
 
     async def _wait_task(self, task_id: str, timeout: float = 300.0) -> None:
+        # Poll the PikPak task until complete, error, or timeout (file may still finalize).
         client = self._require()
         deadline = time.time() + timeout
         while time.time() < deadline:

@@ -1,4 +1,4 @@
-"""Fresh TOTP generation for MEGA 2FA (same idea as transfer.py)."""
+# Fresh TOTP generation for MEGA 2FA (same idea as transfer.py).
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def normalize_totp_secret(secret: str) -> str:
-    """Strip whitespace and common separators; keep base32 alphabet chars."""
+    # Strip whitespace and common separators; keep base32 alphabet chars.
     cleaned = re.sub(r"[\s\-]+", "", (secret or "").strip())
     return cleaned.upper()
 

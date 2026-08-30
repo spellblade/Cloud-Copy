@@ -1,3 +1,5 @@
+# Auth HTTP routes: status, MEGA/PikPak login, logout.
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -17,6 +19,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.get("/status", response_model=AuthStatus)
 async def auth_status() -> AuthStatus:
+    # Current MEGA and PikPak connection state for the dual-pane UI.
     return AuthStatus(
         mega=AuthProviderStatus(
             connected=mega_adapter.is_authenticated(),
@@ -33,6 +36,7 @@ async def auth_status() -> AuthStatus:
 
 @router.post("/mega", response_model=MessageResponse)
 async def login_mega(body: LoginRequest) -> MessageResponse:
+    # Log in to MEGA; optional TOTP secret is stored locally for later restores.
     try:
         await mega_adapter.login(
             body.username,
@@ -50,6 +54,7 @@ async def login_mega(body: LoginRequest) -> MessageResponse:
 
 @router.post("/pikpak", response_model=MessageResponse)
 async def login_pikpak(body: LoginRequest) -> MessageResponse:
+    # Log in to PikPak and persist token + credentials for session restore.
     try:
         await pikpak_adapter.login(body.username, body.password)
     except Exception as exc:  # noqa: BLE001
@@ -59,6 +64,7 @@ async def login_pikpak(body: LoginRequest) -> MessageResponse:
 
 @router.delete("/{provider}", response_model=MessageResponse)
 async def logout(provider: Provider) -> MessageResponse:
+    # Drop the in-memory session and delete saved credentials for that provider.
     if provider == "mega":
         await mega_adapter.logout()
     else:

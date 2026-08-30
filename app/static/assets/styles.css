@@ -1,4 +1,7 @@
+/* Cloud Copy dual-pane UI. Dark theme; MEGA red and PikPak green as accents. */
+
 :root {
+  /* Palette and radii used across auth cards, panes, jobs, and toasts. */
   --bg: #0f1419;
   --bg-elevated: #1a2332;
   --bg-hover: #243044;
@@ -32,6 +35,8 @@ body {
     radial-gradient(900px 500px at 90% 0%, rgba(29, 191, 115, 0.1), transparent 55%),
     var(--bg);
 }
+
+/* --- Shell --- */
 
 .app {
   max-width: 1400px;
@@ -80,6 +85,8 @@ body {
   font-size: 0.85rem;
 }
 
+/* --- Auth cards --- */
+
 .auth-strip {
   display: flex;
   flex-wrap: wrap;
@@ -93,7 +100,7 @@ body {
   padding: 12px 14px;
   min-width: 260px;
   box-shadow: var(--shadow);
-  overflow: visible;
+  overflow: visible; /* let the TOTP ⓘ bubble paint outside the card */
 }
 
 .auth-head {
@@ -121,7 +128,7 @@ body {
 .login-form {
   display: grid;
   gap: 8px;
-  overflow: visible;
+  overflow: visible; /* same: TOTP bubble must not clip */
 }
 
 .input-with-info {
@@ -130,6 +137,8 @@ body {
   gap: 8px;
   overflow: visible;
 }
+
+/* 6-digit field + ⓘ on one row; bubble is positioned relative to the label. */
 
 .input-with-info input {
   flex: 1;
@@ -144,6 +153,7 @@ body {
   overflow: visible;
 }
 
+/* Compact ⓘ; transparent border so hover/focus do not jump layout. */
 .info-tip {
   width: 20px;
   height: 20px;
@@ -177,6 +187,7 @@ body {
   outline-offset: 2px;
 }
 
+/* Tooltip sits above the icon (not below, where Connect would cover it). */
 .info-tip-bubble {
   position: absolute;
   right: 0;
@@ -230,6 +241,8 @@ body {
   border-color: var(--accent);
 }
 
+/* --- Buttons --- */
+
 button {
   border: none;
   border-radius: 8px;
@@ -275,7 +288,9 @@ button.danger {
   font-size: 0.9rem;
 }
 
-.hidden { display: none !important; }
+.hidden { display: none !important; } /* login forms, overlays, TOTP bubble, toasts */
+
+/* --- Toolbar (direction + Transfer) --- */
 
 .toolbar {
   display: flex;
@@ -322,6 +337,8 @@ button.danger {
   gap: 8px;
 }
 
+/* --- Dual file panes --- */
+
 .panes {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -340,7 +357,7 @@ button.danger {
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: hidden; /* table scrolls inside .file-table-wrap, not the card */
   box-shadow: var(--shadow);
 }
 
@@ -376,9 +393,10 @@ button.danger {
   font-size: 0.8rem;
 }
 
+/* Scroll container for the table; relative so Loading overlay covers this box. */
 .file-table-wrap {
   position: relative;
-  overflow-x: hidden;
+  overflow-x: hidden; /* names ellipsize instead of growing a horizontal bar */
   overflow-y: auto;
   flex: 1;
   max-height: 48vh;
@@ -386,7 +404,7 @@ button.danger {
 
 .file-table {
   width: 100%;
-  table-layout: fixed;
+  table-layout: fixed; /* leftover width goes to NAME so ellipsis actually runs */
   /* collapse + sticky thead lets emoji/icons paint over the NAME header */
   border-collapse: separate;
   border-spacing: 0;
@@ -397,7 +415,7 @@ button.danger {
   text-align: left;
   position: sticky;
   top: 0;
-  z-index: 4;
+  z-index: 4; /* above row icons (td z-index 0) so NAME stays readable while scrolling */
   background: #162032;
   color: var(--muted);
   font-weight: 600;
@@ -443,7 +461,7 @@ button.danger {
 .file-table .name-text {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: ellipsis; /* full name is on the span title attribute */
   white-space: nowrap;
 }
 
@@ -456,10 +474,10 @@ button.danger {
 
 .col-check { width: 36px; }
 .col-size {
-  width: 5.75rem;
+  width: 5.75rem; /* enough for "532.7 KB" on one line */
   text-align: right;
   color: var(--muted);
-  white-space: nowrap;
+  white-space: nowrap; /* prevent "146" / "KB" wrapping */
   padding-left: 6px;
   padding-right: 8px;
 }
@@ -474,10 +492,11 @@ button.danger {
   margin: 0;
 }
 
+/* Loading / empty / error overlay on the wrap (not a table footer — no scroll to find it). */
 .file-table-wrap > .empty {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 2; /* below sticky thead (4), above rows */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -490,6 +509,8 @@ button.danger {
 .file-table-wrap > .empty.hidden {
   display: none !important;
 }
+
+/* --- Transfer jobs --- */
 
 .jobs {
   background: var(--bg-elevated);
@@ -596,6 +617,8 @@ button.danger {
   display: flex;
   gap: 8px;
 }
+
+/* --- Toast --- */
 
 .toast {
   position: fixed;

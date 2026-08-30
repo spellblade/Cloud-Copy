@@ -1,4 +1,6 @@
 (() => {
+  // Dual-pane MEGA ↔ PikPak UI: auth, listings, queue, live job updates.
+
   const state = {
     direction: "mega_to_pikpak",
     auth: { mega: { connected: false }, pikpak: { connected: false } },
@@ -10,7 +12,10 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+  // --- Helpers ---
+
   function toast(msg, type = "ok") {
+    // Brief status at the bottom-right; auto-hides.
     const el = $("#toast");
     el.textContent = msg;
     el.className = `toast ${type}`;
@@ -19,6 +24,7 @@
   }
 
   async function api(path, options = {}) {
+    // JSON fetch wrapper; non-OK responses become Error with the API detail.
     const res = await fetch(path, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       ...options,
@@ -38,6 +44,7 @@
   }
 
   function fmtSize(n) {
+    // File size for the SIZE column; empty/zero shows an em dash.
     if (n == null || n === 0) return "—";
     const units = ["B", "KB", "MB", "GB", "TB"];
     let i = 0;
@@ -49,7 +56,10 @@
     return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
 
+  // --- Auth and transfer direction ---
+
   function applyDirection() {
+    // Swap which cloud is source vs dest; resets both panes to root.
     if (state.direction === "mega_to_pikpak") {
       state.left.provider = "mega";
       state.right.provider = "pikpak";
@@ -72,6 +82,7 @@
   }
 
   function setAuthUI() {
+    // Show login forms or connected user; MEGA also shows the "2FA auto" hint.
     for (const p of ["mega", "pikpak"]) {
       const st = state.auth[p] || {};
       const badge = $(`#${p}Badge`);
@@ -104,11 +115,15 @@
   }
 
   async function refreshAuth() {
+    // Pull /api/auth/status and refresh badges/forms.
     state.auth = await api("/api/auth/status");
     setAuthUI();
   }
 
+  // --- File panes ---
+
   function renderCrumbs(side) {
+    // Breadcrumb buttons for the pane stack; click jumps back to that folder.
     const pane = state[side];
     const el = $(`#${side}Crumbs`);
     el.innerHTML = "";
@@ -132,6 +147,7 @@
   }
 
   function renderPane(side) {
+    // Draw the file table. Left pane has checkboxes; folders enter on double-click.
     const pane = state[side];
     const body = $(`#${side}Body`);
     const empty = $(`#${side}Empty`);
@@ -199,6 +215,7 @@
   }
 
   function enterFolder(side, item) {
+    // Navigate into a folder; left-pane selection is cleared.
     const pane = state[side];
     pane.parent = item.id;
     pane.stack.push({ id: item.id, name: item.name });
@@ -207,6 +224,7 @@
   }
 
   async function loadPane(side) {
+    // Fetch listing for the current parent; overlay shows Loading… until render.
     const pane = state[side];
     const empty = $(`#${side}Empty`);
     if (!state.auth[pane.provider]?.connected) {
@@ -230,13 +248,17 @@
   }
 
   function updateTransferButton() {
+    // Enable Transfer only when both clouds are connected and the left pane has a selection.
     const btn = $("#transferBtn");
     const both =
       state.auth.mega?.connected && state.auth.pikpak?.connected;
     btn.disabled = !(both && state.left.selected.size > 0);
   }
 
+  // --- Transfer jobs ---
+
   function failedStageLabel(job) {
+    // Human stage for failed jobs (mirrors TransferJob.stage_label on the server).
     if (!job || !job.stage) return null;
     const src = job.direction === "mega_to_pikpak" ? "MEGA" : "PikPak";
     const dst = job.direction === "mega_to_pikpak" ? "PikPak" : "MEGA";
@@ -252,6 +274,7 @@
   }
 
   function renderJobs() {
+    // Job cards with status, message, progress, Cancel, and Retry.
     const list = $("#jobsList");
     if (!state.jobs.length) {
       list.innerHTML = `<p class="empty">No transfers yet.</p>`;
@@ -322,6 +345,7 @@
   }
 
   function escapeHtml(s) {
+    // Escape job text interpolated into innerHTML.
     return String(s)
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
@@ -330,6 +354,7 @@
   }
 
   function upsertJob(job) {
+    // Insert or replace one job from a WS update, then re-render the list.
     const idx = state.jobs.findIndex((j) => j.id === job.id);
     if (idx >= 0) state.jobs[idx] = job;
     else state.jobs.unshift(job);
@@ -337,6 +362,7 @@
   }
 
   function connectWs() {
+    // Live /ws/transfers: snapshot on open, per-job updates, reconnect after close.
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws/transfers`);
     const status = $("#wsStatus");
@@ -366,8 +392,10 @@
     });
   }
 
-  // Event wiring
+  // --- Event wiring ---
+
   (function setupTotpInfoTip() {
+    // MEGA ⓘ: hover/focus opens the bubble; click pins it; Escape/outside click closes.
     const btn = $("#megaMfaInfo");
     const bubble = $("#megaMfaHint");
     const wrap = btn && btn.closest(".input-with-info-label");
@@ -378,17 +406,20 @@
     const isOpen = () => !bubble.classList.contains("hidden");
 
     const open = () => {
+      // Show the bubble and mark the button expanded.
       clearTimeout(closeTimer);
       bubble.classList.remove("hidden");
       btn.setAttribute("aria-expanded", "true");
     };
     const close = () => {
+      // Hide the bubble and clear the pin.
       clearTimeout(closeTimer);
       pinned = false;
       bubble.classList.add("hidden");
       btn.setAttribute("aria-expanded", "false");
     };
     const delayedClose = () => {
+      // Short delay so moving from the icon onto the bubble does not close it.
       if (pinned) return;
       clearTimeout(closeTimer);
       closeTimer = setTimeout(() => {
@@ -422,6 +453,7 @@
     });
   })();
 
+  // MEGA → PikPak vs PikPak → MEGA; swaps pane providers.
   $$(".dir-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       $$(".dir-btn").forEach((b) => b.classList.remove("active"));
@@ -431,7 +463,7 @@
     });
   });
 
-  // Mega and PikPak login forms
+  // MEGA login: password plus optional TOTP secret and/or one-shot 6-digit code.
   $("#megaLogin").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -460,6 +492,7 @@
   });
 
   $("#pikpakLogin").addEventListener("submit", async (e) => {
+    // PikPak is email/password only (no TOTP on this form).
     e.preventDefault();
     const fd = new FormData(e.target);
     try {
@@ -493,6 +526,7 @@
   });
 
   $$("[data-up]").forEach((btn) => {
+    // Parent folder (Up); no-op at root.
     btn.addEventListener("click", () => {
       const side = btn.dataset.up;
       const pane = state[side];
@@ -506,6 +540,7 @@
   });
 
   $("#leftSelectAll").addEventListener("change", (e) => {
+    // Check/uncheck every row in the current source folder.
     const on = e.target.checked;
     state.left.selected = new Set();
     if (on) {
@@ -520,6 +555,7 @@
   });
 
   $("#transferBtn").addEventListener("click", async () => {
+    // Queue selected left-pane items into the current right-pane folder.
     const selected = state.left.items.filter((i) => state.left.selected.has(i.id));
     if (!selected.length) return;
     const source_meta = {};
@@ -545,7 +581,10 @@
     }
   });
 
+  // --- Temp / data paths ---
+
   function fmtBytes(n) {
+    // Byte size for the temp-folder line (0 B when empty).
     if (!n) return "0 B";
     const units = ["B", "KB", "MB", "GB"];
     let i = 0;
@@ -558,6 +597,7 @@
   }
 
   async function refreshPaths() {
+    // Show temp and data dirs under the jobs header.
     try {
       const p = await api("/api/system/paths");
       const line = $("#tempPathLine");
@@ -565,11 +605,12 @@
         line.textContent = `Temp folder: ${p.temp_dir} (${fmtBytes(p.temp_bytes)}) · Data: ${p.data_dir}`;
       }
     } catch {
-      /* ignore */
+      // ignore
     }
   }
 
   $("#clearTempBtn").addEventListener("click", async () => {
+    // Wipe leftover local-relay files; confirm first.
     if (
       !confirm(
         "Delete all local transfer temp files under the Cloud Copy temp folder?\n\n" +
@@ -587,7 +628,7 @@
     }
   });
 
-  // boot
+  // Boot: auth, panes, live jobs, temp path.
   (async () => {
     try {
       await refreshAuth();
@@ -602,7 +643,7 @@
       state.jobs = data.jobs || [];
       renderJobs();
     } catch {
-      /* ignore */
+      // ignore
     }
   })();
 })();

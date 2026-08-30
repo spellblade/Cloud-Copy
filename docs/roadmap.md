@@ -44,7 +44,7 @@ Work sequence (ease × risk × priority). **Branch** is a plain name (no link); 
 | 1 | [#10](https://github.com/spellblade/Cloud-Copy/issues/10) TOTP hint | Yes | `feat/gist-backlog` |
 | 2 | [#13](https://github.com/spellblade/Cloud-Copy/issues/13) Failed stage | Yes | `feat/gist-backlog` |
 | 3 | [#9](https://github.com/spellblade/Cloud-Copy/issues/9) File-list UI | Yes | `feat/file-list-ui` |
-| 4 | [#5](https://github.com/spellblade/Cloud-Copy/issues/5) Folder select | No | — |
+| 4 | [#5](https://github.com/spellblade/Cloud-Copy/issues/5) Folder select | No | `feat/folder-select` |
 | 5 | [#4](https://github.com/spellblade/Cloud-Copy/issues/4) Live progress | No | — |
 | 6 | [#6](https://github.com/spellblade/Cloud-Copy/issues/6) Queue stuck | No | — |
 | 7 | [#16](https://github.com/spellblade/Cloud-Copy/issues/16) Retry skip completed dest | No | — |

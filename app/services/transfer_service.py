@@ -221,14 +221,18 @@ class TransferService:
 
                 meta = job.source_meta.get(source_id) or {}
                 name = meta.get("name")
-                is_dir = bool(meta.get("is_dir"))
+                is_dir: bool | None = (
+                    bool(meta["is_dir"]) if "is_dir" in meta else None
+                )
 
-                # Resolve metadata if missing
-                if name is None:
+                # Look up name / is_dir when the UI omitted them (folder vs file).
+                if name is None or is_dir is None:
                     job.stage = TransferStage.listing
                     node = await src.get_node(source_id)
-                    name = node.name
-                    is_dir = node.is_dir
+                    if name is None:
+                        name = node.name
+                    if is_dir is None:
+                        is_dir = node.is_dir
 
                 job.current_file = name
                 job.message = f"Transferring {name}"

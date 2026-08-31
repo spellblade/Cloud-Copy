@@ -99,7 +99,7 @@ Open **http://127.0.0.1:8000** in your browser.
 
 1. Sign in to **MEGA** and **PikPak** in the top panel.
 2. Choose direction (**MEGA → PikPak** or reverse).
-3. Browse the source pane; multi-select files/folders.
+3. Browse the source pane; check files or folders to transfer (a folder copies its contents). Double-click a folder to open it.
 4. Navigate the destination pane to the target folder.
 5. Click **Transfer selected**.
 6. Watch progress in the **Transfers** section; cancel or retry as needed.

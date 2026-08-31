@@ -172,15 +172,17 @@
       if (side === "left" && pane.selected.has(item.id)) tr.classList.add("selected");
 
       const tdCheck = document.createElement("td");
+      let cb = null;
       if (side === "left") {
-        const cb = document.createElement("input");
+        cb = document.createElement("input");
         cb.type = "checkbox";
         cb.checked = pane.selected.has(item.id);
+        cb.title = item.is_dir
+          ? "Select this folder to transfer it (with its contents)"
+          : "Select this file to transfer it";
+        cb.addEventListener("click", (e) => e.stopPropagation());
         cb.addEventListener("change", () => {
-          if (cb.checked) pane.selected.add(item.id);
-          else pane.selected.delete(item.id);
-          tr.classList.toggle("selected", cb.checked);
-          updateTransferButton();
+          setLeftSelected(item.id, cb.checked, tr, cb);
         });
         tdCheck.appendChild(cb);
       }
@@ -192,13 +194,27 @@
       wrap.innerHTML = `<span class="icon">${item.is_dir ? "📁" : "📄"}</span><span class="name-text"></span>`;
       const nameEl = wrap.querySelector(".name-text");
       nameEl.textContent = item.name;
-      nameEl.title = item.name;
+      nameEl.title = item.is_dir
+        ? `${item.name} — ${side === "left" ? "click to select, double-click to open" : "double-click to open"}`
+        : item.name;
       if (item.is_dir) {
-        wrap.addEventListener("dblclick", () => enterFolder(side, item));
+        let clickTimer;
         wrap.addEventListener("click", (e) => {
-          if (e.detail === 1) {
-            // single click select only for left
-          }
+          // Delay so a double-click can cancel this and open the folder instead.
+          if (side !== "left") return;
+          if (e.detail !== 1) return;
+          clearTimeout(clickTimer);
+          clickTimer = setTimeout(() => {
+            setLeftSelected(item.id, !state.left.selected.has(item.id), tr, cb);
+          }, 280);
+        });
+        wrap.addEventListener("dblclick", () => {
+          clearTimeout(clickTimer);
+          enterFolder(side, item);
+        });
+      } else if (side === "left") {
+        wrap.addEventListener("click", () => {
+          setLeftSelected(item.id, !state.left.selected.has(item.id), tr, cb);
         });
       }
       tdName.appendChild(wrap);
@@ -253,6 +269,21 @@
     const both =
       state.auth.mega?.connected && state.auth.pikpak?.connected;
     btn.disabled = !(both && state.left.selected.size > 0);
+    const all = $("#leftSelectAll");
+    if (all) {
+      const n = state.left.items.length;
+      all.checked = n > 0 && state.left.selected.size === n;
+      all.indeterminate = state.left.selected.size > 0 && state.left.selected.size < n;
+    }
+  }
+
+  function setLeftSelected(itemId, on, tr, cb) {
+    // Toggle one source item (file or folder) and refresh the Transfer button.
+    if (on) state.left.selected.add(itemId);
+    else state.left.selected.delete(itemId);
+    if (tr) tr.classList.toggle("selected", on);
+    if (cb) cb.checked = on;
+    updateTransferButton();
   }
 
   // --- Transfer jobs ---
@@ -572,7 +603,12 @@
           source_meta,
         }),
       });
-      toast("Transfer queued");
+      const nFolders = selected.filter((i) => i.is_dir).length;
+      toast(
+        nFolders
+          ? `Transfer queued (${selected.length} item(s), including ${nFolders} folder(s))`
+          : "Transfer queued"
+      );
       state.left.selected = new Set();
       $("#leftSelectAll").checked = false;
       renderPane("left");

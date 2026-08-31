@@ -81,6 +81,7 @@
         <header class="pane-header">
           <div>
             <h2 id="leftTitle">Source</h2>
+            <p class="muted small pane-hint" id="leftSelectHint">Check a folder to transfer it. Double-click a folder to open it.</p>
             <nav class="crumbs" id="leftCrumbs"></nav>
           </div>
           <button type="button" class="ghost small" data-up="left">↑ Up</button>
@@ -89,7 +90,7 @@
           <table class="file-table">
             <thead>
               <tr>
-                <th class="col-check"><input type="checkbox" id="leftSelectAll" /></th>
+                <th class="col-check"><input type="checkbox" id="leftSelectAll" title="Select all files and folders in this folder" aria-label="Select all" /></th>
                 <th>Name</th>
                 <th class="col-size">Size</th>
               </tr>

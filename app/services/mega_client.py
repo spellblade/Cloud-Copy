@@ -357,16 +357,27 @@ class MegaAdapter:
         return self._node_to_file(handle, node)
 
     async def mkdir(self, parent_id: str | None, name: str) -> FileNode:
-        # Create a folder under ``parent_id`` (root if omitted) and return it.
-        m = self._require()
+        """Create a folder under ``parent_id``, or return one that already exists there.
+
+        mega.py ``create_folder`` looks up names from the cloud-drive root, so a
+        nested dest can reuse the wrong folder. We list the parent ourselves and
+        call ``_mkdir`` only when the name is free in that folder.
+        """
         dest = parent_id or self._root_id()
+        for item in await self.list_folder(dest):
+            if item.is_dir and item.name == name:
+                return item
 
-        def _mkdir() -> dict[str, str]:
-            return m.create_folder(name, dest=dest)
+        m = self._require()
 
-        result = await asyncio.to_thread(_mkdir)
-        # result maps name -> node id for path segments
-        folder_id = list(result.values())[-1]
+        def _mkdir() -> str:
+            created = m._mkdir(name=name, parent_node_id=dest)
+            files = created.get("f") if isinstance(created, dict) else None
+            if not files:
+                raise RuntimeError(f"MEGA mkdir returned no node for {name!r}")
+            return files[0]["h"]
+
+        folder_id = await asyncio.to_thread(_mkdir)
         await self._refresh_files_cache()
         return await self.get_node(folder_id)
 

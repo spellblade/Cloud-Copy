@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sticky **NAME** header stays above row icons while scrolling (`border-collapse: separate` + header `z-index`) (#9)
 - PikPak (and MEGA) file lists no longer show a horizontal scrollbar; size stays on one line (`532.7 KB`) (#9)
 - Hover a truncated filename to see the full name (`title` on the name span) (#9)
+- Selecting a **folder** in the source pane queues a recursive copy (create dest folder, transfer children). Check the box to select; double-click still opens the folder (#5)
 
 ## [1.0.0] - 2026-07-31
 

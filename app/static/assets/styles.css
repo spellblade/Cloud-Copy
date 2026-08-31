@@ -375,6 +375,16 @@ button.danger {
   font-size: 1rem;
 }
 
+.pane-hint {
+  margin: 4px 0 0;
+  max-width: 22rem;
+  line-height: 1.35;
+}
+
+#leftPane .file-table tbody tr {
+  cursor: pointer; /* whole source row is selectable */
+}
+
 .crumbs {
   margin-top: 4px;
   font-size: 0.8rem;

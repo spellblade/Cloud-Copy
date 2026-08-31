@@ -2,7 +2,7 @@
 
 1. Sign in to **MEGA** and **PikPak** in the top panel.
 2. Choose direction (MEGA → PikPak or reverse).
-3. Browse the source pane; select files or folders.
+3. Browse the source pane. **Check** files or folders to transfer (a checked folder copies its contents). Double-click a folder to open it.
 4. Open the destination folder on the right.
 5. Click **Transfer selected**.
 6. Watch **Transfers**; cancel or retry as needed.

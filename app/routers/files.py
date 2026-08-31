@@ -1,3 +1,5 @@
+# File-listing HTTP routes for MEGA and PikPak panes.
+
 from __future__ import annotations
 
 from typing import Optional
@@ -12,6 +14,7 @@ router = APIRouter(prefix="/api/files", tags=["files"])
 
 
 def _adapter(provider: Provider):
+    # Return the MEGA or PikPak adapter singleton for this request.
     if provider == "mega":
         return mega_adapter
     return pikpak_adapter
@@ -22,6 +25,7 @@ async def list_files(
     provider: Provider,
     parent: Optional[str] = Query(default=None, description="Folder id; omit for root"),
 ) -> FileListResponse:
+    # List children of ``parent`` (omit for root). Requires a live login.
     adapter = _adapter(provider)
     if not adapter.is_authenticated():
         raise HTTPException(status_code=401, detail=f"Not logged in to {provider}")

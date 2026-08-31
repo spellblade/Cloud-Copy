@@ -664,8 +664,24 @@
     }
   });
 
-  // Boot: auth, panes, live jobs, temp path.
+  async function refreshVersion() {
+    // Show package version next to the title (from GET /api/health).
+    const el = $("#appVersion");
+    if (!el) return;
+    try {
+      const h = await api("/api/health");
+      if (h?.version) {
+        el.textContent = `v${h.version}`;
+        document.title = `Cloud Copy v${h.version} — MEGA ↔ PikPak`;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Boot: version, auth, panes, live jobs, temp path.
   (async () => {
+    refreshVersion();
     try {
       await refreshAuth();
     } catch (e) {

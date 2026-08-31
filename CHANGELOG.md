@@ -16,6 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.0.2] - 2026-08-31
+
+### Added
+
+- App version is shown next to the **Cloud Copy** title (from `/api/health`)
+
+### Changed
+
+- File-list **SIZE** column is nowrap with a fixed table layout so long names ellipsize instead of widening the pane (#9)
+
+### Fixed
+
+- File pane **Loading** is a centered overlay in the visible list (no scrolling to see it) (#9)
+- Sticky **NAME** header stays above row icons while scrolling (`border-collapse: separate` + header `z-index`) (#9)
+- PikPak (and MEGA) file lists no longer show a horizontal scrollbar; size stays on one line (`532.7 KB`) (#9)
+- Hover a truncated filename to see the full name (`title` on the name span) (#9)
+- Selecting a **folder** in the source pane queues a recursive copy (create dest folder, transfer children). Check the box to select; double-click still opens the folder (#5)
+
 ## [1.0.1] - 2026-08-17
 
 ### Added
@@ -27,18 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- File-list **SIZE** column is nowrap with a fixed table layout so long names ellipsize instead of widening the pane (#9)
-
 ### Fixed
 
 - App version in `app/__init__.py` was still `0.1.0` while README said `1.0.0`
 - CI runs `python -m pytest` so the `app` package is importable (bare `pytest` failed with `No module named 'app'`)
 - Transfer job timestamps use timezone-aware UTC (`datetime.now(timezone.utc)`) instead of deprecated `utcnow()`
-- File pane **Loading** is a centered overlay in the visible list (no scrolling to see it) (#9)
-- Sticky **NAME** header stays above row icons while scrolling (`border-collapse: separate` + header `z-index`) (#9)
-- PikPak (and MEGA) file lists no longer show a horizontal scrollbar; size stays on one line (`532.7 KB`) (#9)
-- Hover a truncated filename to see the full name (`title` on the name span) (#9)
-- Selecting a **folder** in the source pane queues a recursive copy (create dest folder, transfer children). Check the box to select; double-click still opens the folder (#5)
 
 ## [1.0.0] - 2026-07-31
 
@@ -56,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/spellblade/Cloud-Copy/releases/tag/v1.0.0

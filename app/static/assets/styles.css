@@ -79,6 +79,15 @@ body {
   letter-spacing: -0.02em;
 }
 
+.app-version {
+  margin-left: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  vertical-align: middle;
+}
+
 .tagline {
   margin: 2px 0 0;
   color: var(--muted);

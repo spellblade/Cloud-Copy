@@ -1,3 +1,5 @@
+# FastAPI app: restore cloud sessions on startup and serve the dual-pane UI.
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +27,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # On startup, re-login MEGA and PikPak from saved credentials; log shutdown.
     logger.info("Starting Cloud Copy v%s", __version__)
     # Attempt session restore
     try:
@@ -51,6 +54,7 @@ app.include_router(system.router)
 
 @app.get("/api/health")
 async def health():
+    # Liveness probe used by CI and operators.
     return {"ok": True, "version": __version__}
 
 
@@ -59,10 +63,12 @@ if STATIC_DIR.exists():
 
     @app.get("/")
     async def index():
+        # Serve the dual-pane web UI.
         return FileResponse(STATIC_DIR / "index.html")
 
 
 def run() -> None:
+    # Start uvicorn bound to ``settings.host`` / ``settings.port`` (no reload).
     import uvicorn
 
     uvicorn.run(

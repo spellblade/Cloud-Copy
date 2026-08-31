@@ -1,10 +1,13 @@
+# MEGA adapter: mega.py wrapped for asyncio, with MFA login and Windows-safe download.
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from app.models import FileNode
 from app.services.credential_store import credential_store
@@ -16,7 +19,7 @@ ProgressCallback = Callable[[int, int], None]
 
 
 def _map_mega_error(err: Any, *, context: str = "MEGA request") -> str:
-    """Translate mega RequestError / numeric codes into user-facing messages."""
+    # Translate mega RequestError / numeric codes into user-facing messages.
     text = str(err)
     low = text.lower()
     if "eoverquota" in low or "over quota" in low or "overquota" in low:
@@ -57,36 +60,40 @@ def _map_mega_error(err: Any, *, context: str = "MEGA request") -> str:
 
 
 def _map_mega_login_error(err: Any) -> str:
+    # Same mapping as ``_map_mega_error``, labeled as a login failure.
     return _map_mega_error(err, context="MEGA login")
 
 
 class MegaAdapter:
-    """Adapter around mega.py (sync API wrapped for asyncio)."""
+    # Adapter around mega.py (sync API wrapped for asyncio).
 
     def __init__(self) -> None:
         self._m: Any = None
-        self._username: Optional[str] = None
-        self._totp_secret: Optional[str] = None
+        self._username: str | None = None
+        self._totp_secret: str | None = None
         self._files_cache: dict[str, Any] = {}
 
     @property
-    def username(self) -> Optional[str]:
+    def username(self) -> str | None:
+        # Email used for the current MEGA session, if any.
         return self._username
 
     @property
     def totp_configured(self) -> bool:
+        # True when a TOTP secret is in memory (the secret itself is never returned).
         return bool(self._totp_secret)
 
     def is_authenticated(self) -> bool:
+        # True after a successful login (mega.py client is held in ``_m``).
         return self._m is not None
 
     def _resolve_totp_secret(
         self,
-        totp_secret: Optional[str] = None,
+        totp_secret: str | None = None,
         use_saved: bool = True,
-    ) -> Optional[str]:
-        """Prefer request secret, then in-memory, then store, then env."""
-        candidates: list[Optional[str]] = [totp_secret]
+    ) -> str | None:
+        # Prefer request secret, then in-memory, then store, then env.
+        candidates: list[str | None] = [totp_secret]
         if use_saved:
             candidates.append(self._totp_secret)
             saved = credential_store.get("mega") or {}
@@ -99,10 +106,18 @@ class MegaAdapter:
 
     def _resolve_mfa_code(
         self,
-        mfa_code: Optional[str] = None,
-        totp_secret: Optional[str] = None,
-    ) -> Optional[str]:
-        """
+        mfa_code: str | None = None,
+        totp_secret: str | None = None,
+    ) -> str | None:
+        """Resolve the MFA code for login.
+        
+        Args:
+            mfa_code: The MFA code provided by the user.
+            totp_secret: The TOTP secret for generating a fresh code.
+
+        Returns:
+            The resolved MFA code, or None if not available.
+        
         1) Explicit one-shot mfa_code
         2) Fresh code from TOTP secret (request / saved / env)
         """
@@ -119,11 +134,14 @@ class MegaAdapter:
         self,
         username: str,
         password: str,
-        mfa_code: Optional[str] = None,
-        totp_secret: Optional[str] = None,
+        mfa_code: str | None = None,
+        totp_secret: str | None = None,
         persist: bool = True,
     ) -> None:
-        # Resolve secret for persistence even if user only uses env this time
+        """Log in (optionally minting a fresh TOTP) and optionally persist credentials.
+        
+        Resolve secret for persistence even if user only uses env this time
+        """
         secret_to_store = None
         if totp_secret and totp_secret.strip():
             secret_to_store = normalize_totp_secret(totp_secret)
@@ -160,9 +178,9 @@ class MegaAdapter:
         await self._refresh_files_cache()
 
     @staticmethod
-    def _login_with_mfa(email: str, password: str, mfa_code: Optional[str]) -> Any:
+    def _login_with_mfa(email: str, password: str, mfa_code: str | None) -> Any:
         """Login via mega.py internals, with optional MEGA MFA (2FA) code.
-
+        
         mega.py's public login() never sends ``mfa``. MEGA expects:
         ``{ a: 'us', user, uh, mfa?: '<6-digit>' }`` when 2FA is enabled.
         """
@@ -214,7 +232,8 @@ class MegaAdapter:
             raise RuntimeError(f"MEGA login failed: {exc}") from exc
 
         if isinstance(resp, int):
-            raise RuntimeError(_map_mega_login_error(resp))
+            # MEGA returns numeric API codes; this is a login failure, not a Python type error.
+            raise RuntimeError(_map_mega_login_error(resp))  # noqa: TRY004
 
         try:
             mega._login_process(resp, password_aes)
@@ -228,6 +247,7 @@ class MegaAdapter:
         return mega
 
     async def restore_session(self) -> bool:
+        # Re-login from ``credentials.json`` on app start. Returns False if nothing saved.
         saved = credential_store.get("mega")
         if not saved or not saved.get("username") or not saved.get("password"):
             return False
@@ -250,6 +270,7 @@ class MegaAdapter:
             return False
 
     async def logout(self) -> None:
+        # Drop the session and delete saved MEGA credentials.
         self._m = None
         self._username = None
         self._totp_secret = None
@@ -257,11 +278,13 @@ class MegaAdapter:
         credential_store.delete("mega")
 
     def _require(self) -> Any:
+        # Return the mega.py client or raise if not logged in.
         if self._m is None:
             raise RuntimeError("Not logged in to MEGA")
         return self._m
 
     async def _refresh_files_cache(self) -> None:
+        # Reload MEGA's full node map on a worker thread (sync mega.py call).
         m = self._require()
 
         def _get() -> dict[str, Any]:
@@ -270,6 +293,7 @@ class MegaAdapter:
         self._files_cache = await asyncio.to_thread(_get)
 
     def _root_id(self) -> str:
+        # Cloud-drive root handle (type 2), used when listing with no parent.
         m = self._require()
         if hasattr(m, "root_id") and m.root_id:
             return m.root_id
@@ -279,6 +303,7 @@ class MegaAdapter:
         return node[0]
 
     def _node_to_file(self, handle: str, node: dict[str, Any]) -> FileNode:
+        # Map a mega.py node dict onto our ``FileNode`` (type 1 = folder).
         attrs = node.get("a") or {}
         name = attrs.get("n") or handle
         is_dir = int(node.get("t", 0)) == 1
@@ -296,7 +321,8 @@ class MegaAdapter:
             parent_id=node.get("p"),
         )
 
-    async def list_folder(self, folder_id: Optional[str] = None) -> list[FileNode]:
+    async def list_folder(self, folder_id: str | None = None) -> list[FileNode]:
+        # Children of ``folder_id`` (root if omitted); folders first, then name.
         await self._refresh_files_cache()
         parent = folder_id or self._root_id()
         items: list[FileNode] = []
@@ -313,6 +339,7 @@ class MegaAdapter:
         return items
 
     def _get_node_pair(self, file_id: str) -> tuple[str, dict[str, Any]]:
+        # Look up a handle in the cache; refresh once if missing.
         node = self._files_cache.get(file_id)
         if not node:
             # try refresh sync
@@ -324,20 +351,33 @@ class MegaAdapter:
         return file_id, node
 
     async def get_node(self, file_id: str) -> FileNode:
+        # Refresh cache and return one node (used when transfer meta lacks a name).
         await self._refresh_files_cache()
         handle, node = self._get_node_pair(file_id)
         return self._node_to_file(handle, node)
 
-    async def mkdir(self, parent_id: Optional[str], name: str) -> FileNode:
-        m = self._require()
+    async def mkdir(self, parent_id: str | None, name: str) -> FileNode:
+        """Create a folder under ``parent_id``, or return one that already exists there.
+
+        mega.py ``create_folder`` looks up names from the cloud-drive root, so a
+        nested dest can reuse the wrong folder. We list the parent ourselves and
+        call ``_mkdir`` only when the name is free in that folder.
+        """
         dest = parent_id or self._root_id()
+        for item in await self.list_folder(dest):
+            if item.is_dir and item.name == name:
+                return item
 
-        def _mkdir() -> dict[str, str]:
-            return m.create_folder(name, dest=dest)
+        m = self._require()
 
-        result = await asyncio.to_thread(_mkdir)
-        # result maps name -> node id for path segments
-        folder_id = list(result.values())[-1]
+        def _mkdir() -> str:
+            created = m._mkdir(name=name, parent_node_id=dest)
+            files = created.get("f") if isinstance(created, dict) else None
+            if not files:
+                raise RuntimeError(f"MEGA mkdir returned no node for {name!r}")
+            return files[0]["h"]
+
+        folder_id = await asyncio.to_thread(_mkdir)
         await self._refresh_files_cache()
         return await self.get_node(folder_id)
 
@@ -345,10 +385,9 @@ class MegaAdapter:
         self,
         file_id: str,
         dest_dir: Path,
-        on_progress: Optional[ProgressCallback] = None,
+        on_progress: ProgressCallback | None = None,
     ) -> Path:
-        """Download a MEGA file to dest_dir with a Windows-safe write path.
-
+        """ Download a MEGA file to dest_dir with a Windows-safe write path.
         mega.py's download() uses NamedTemporaryFile + shutil.move while the
         handle is still open, which raises WinError 32 on Windows. We stream
         decrypt into our own partial file, close it, then rename.
@@ -377,8 +416,9 @@ class MegaAdapter:
         file_node: dict[str, Any],
         dest_dir: Path,
         file_name: str,
-        on_progress: Optional[ProgressCallback] = None,
+        on_progress: ProgressCallback | None = None,
     ) -> Path:
+        # Stream-decrypt MEGA chunks into ``.partial``, close, then rename to the final name.
         import requests
         from Crypto.Cipher import AES
         from Crypto.Util import Counter
@@ -476,10 +516,11 @@ class MegaAdapter:
     async def upload_from_path(
         self,
         local_path: Path,
-        parent_id: Optional[str],
-        name: Optional[str] = None,
-        on_progress: Optional[ProgressCallback] = None,
+        parent_id: str | None,
+        name: str | None = None,
+        on_progress: ProgressCallback | None = None,
     ) -> FileNode:
+        # Upload a local file into ``parent_id`` via mega.py (sync, on a thread).
         m = self._require()
         dest = parent_id or self._root_id()
         dest_name = name or local_path.name

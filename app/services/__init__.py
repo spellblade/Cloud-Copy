@@ -1,1 +1,1 @@
-"""Service layer for cloud adapters and transfers."""
+# Service layer for cloud adapters and transfers.

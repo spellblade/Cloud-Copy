@@ -1,6 +1,10 @@
+import asyncio
+from pathlib import Path
+
 import pytest
 
-from app.models import TransferJob, TransferStage, TransferStatus
+from app.models import FileNode, TransferJob, TransferStage, TransferStatus
+from app.services import transfer_service as ts_mod
 from app.services.transfer_service import TransferService, _mark_failed
 
 
@@ -65,3 +69,113 @@ def test_failed_stage_label_reverse_download():
     )
     _mark_failed(job, RuntimeError("x"))
     assert job.message == "Failed · PikPak download"
+
+
+class _SrcFolderTree:
+    """In-memory source: one folder with a file and a nested folder."""
+
+    def __init__(self) -> None:
+        self.nodes = {
+            "folder1": FileNode(id="folder1", name="Docs", is_dir=True),
+            "f1": FileNode(id="f1", name="a.txt", is_dir=False, size=1),
+            "sub": FileNode(id="sub", name="sub", is_dir=True),
+            "f2": FileNode(id="f2", name="b.txt", is_dir=False, size=1),
+        }
+        self.children = {
+            "folder1": [self.nodes["f1"], self.nodes["sub"]],
+            "sub": [self.nodes["f2"]],
+        }
+
+    def is_authenticated(self) -> bool:
+        return True
+
+    async def get_node(self, file_id: str) -> FileNode:
+        return self.nodes[file_id]
+
+    async def list_folder(self, folder_id: str | None) -> list[FileNode]:
+        return list(self.children.get(folder_id or "", []))
+
+    async def download_to_path(self, file_id: str, dest_dir: Path, on_progress=None) -> Path:
+        node = self.nodes[file_id]
+        path = dest_dir / node.name
+        path.write_bytes(b"x")
+        if on_progress:
+            on_progress(1, 1)
+        return path
+
+
+class _DstRecorder:
+    """Destination that records mkdir/upload so tests can assert folder layout."""
+
+    def __init__(self) -> None:
+        self.mkdirs: list[tuple[str | None, str, str]] = []
+        self.uploads: list[tuple[str | None, str]] = []
+        self._n = 0
+
+    def is_authenticated(self) -> bool:
+        return True
+
+    async def mkdir(self, parent_id: str | None, name: str) -> FileNode:
+        self._n += 1
+        node_id = f"d{self._n}"
+        self.mkdirs.append((parent_id, name, node_id))
+        return FileNode(id=node_id, name=name, is_dir=True, parent_id=parent_id)
+
+    async def upload_from_path(self, local_path: Path, parent_id: str | None, name=None, on_progress=None):
+        dest_name = name or local_path.name
+        self.uploads.append((parent_id, dest_name))
+        if on_progress:
+            on_progress(1, 1)
+        return FileNode(id="u", name=dest_name, is_dir=False)
+
+
+async def _run_folder_job(monkeypatch, tmp_path, source_meta: dict) -> tuple[TransferJob, _DstRecorder]:
+    src, dst = _SrcFolderTree(), _DstRecorder()
+    monkeypatch.setattr(ts_mod, "mega_adapter", src)
+    monkeypatch.setattr(ts_mod, "pikpak_adapter", dst)
+    monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
+
+    svc = TransferService()
+    job = TransferJob(
+        id="job-folder",
+        direction="mega_to_pikpak",
+        source_ids=["folder1"],
+        dest_parent_id="dest-root",
+        source_meta=source_meta,
+    )
+    svc.jobs[job.id] = job
+    svc._cancel_flags[job.id] = asyncio.Event()
+    await svc._run_job(job)
+    return job, dst
+
+
+@pytest.mark.asyncio
+async def test_folder_meta_copies_children(monkeypatch, tmp_path):
+    """Selected folder with is_dir=True creates dest folder and copies nested files."""
+    job, dst = await _run_folder_job(
+        monkeypatch,
+        tmp_path,
+        {"folder1": {"name": "Docs", "is_dir": True}},
+    )
+    assert job.status == TransferStatus.completed
+    assert dst.mkdirs[0] == ("dest-root", "Docs", "d1")
+    nested = [m[1] for m in dst.mkdirs]
+    assert "sub" in nested
+    uploaded = [u[1] for u in dst.uploads]
+    assert uploaded == ["a.txt", "b.txt"]
+    assert dst.uploads[0][0] == "d1"
+    sub_id = next(m[2] for m in dst.mkdirs if m[1] == "sub")
+    assert dst.uploads[1][0] == sub_id
+
+
+@pytest.mark.asyncio
+async def test_folder_without_is_dir_looks_up_node(monkeypatch, tmp_path):
+    """If the UI omits is_dir, get_node still classifies the source as a folder."""
+    job, dst = await _run_folder_job(
+        monkeypatch,
+        tmp_path,
+        {"folder1": {"name": "Docs"}},
+    )
+    assert job.status == TransferStatus.completed
+    assert dst.mkdirs[0][1] == "Docs"
+    assert [u[1] for u in dst.uploads] == ["a.txt", "b.txt"]

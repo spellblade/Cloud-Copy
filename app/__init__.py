@@ -1,3 +1,3 @@
-"""Cloud-copy: local MEGA ↔ PikPak transfer app."""
+# Cloud-copy: local MEGA ↔ PikPak transfer app.
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"

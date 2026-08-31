@@ -1,3 +1,5 @@
+"""Serial transfer queue: download each item to local temp, then upload to the other cloud."""
+
 from __future__ import annotations
 
 import asyncio
@@ -41,6 +43,8 @@ def _rmtree_retry(path: Path, attempts: int = 5, delay: float = 0.25) -> None:
 
 
 class TransferService:
+    """In-memory job store plus one asyncio worker that runs jobs one at a time."""
+
     def __init__(self) -> None:
         self.jobs: dict[str, TransferJob] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
@@ -50,13 +54,16 @@ class TransferService:
         self._lock = asyncio.Lock()
 
     def add_listener(self, listener: Listener) -> None:
+        """Register a callback (HTTP WS broadcast) invoked on every job update."""
         self._listeners.append(listener)
 
     def remove_listener(self, listener: Listener) -> None:
+        """Unregister a listener if present."""
         if listener in self._listeners:
             self._listeners.remove(listener)
 
     async def _notify(self, job: TransferJob) -> None:
+        """Touch the job timestamp and fan out to listeners (sync or async)."""
         job.touch()
         for listener in list(self._listeners):
             try:
@@ -67,6 +74,7 @@ class TransferService:
                 logger.debug("listener error: %s", exc)
 
     def ensure_worker(self) -> None:
+        """Start the background worker if it is not already running."""
         if self._worker_task is None or self._worker_task.done():
             self._worker_task = asyncio.create_task(self._worker_loop())
 
@@ -77,6 +85,7 @@ class TransferService:
         dest_parent_id: str | None,
         source_meta: dict[str, dict] | None = None,
     ) -> TransferJob:
+        """Create a queued job, start the worker, and push the id onto the queue."""
         job = TransferJob(
             id=str(uuid.uuid4()),
             direction=direction,
@@ -93,12 +102,15 @@ class TransferService:
         return job
 
     def list_jobs(self) -> list[TransferJob]:
+        """All jobs, newest first."""
         return sorted(self.jobs.values(), key=lambda j: j.created_at, reverse=True)
 
     def get_job(self, job_id: str) -> TransferJob | None:
+        """Look up one job, or None."""
         return self.jobs.get(job_id)
 
     async def cancel(self, job_id: str) -> TransferJob:
+        """Mark queued jobs cancelled immediately; running jobs stop after the current step."""
         job = self.jobs.get(job_id)
         if not job:
             raise KeyError(job_id)
@@ -127,6 +139,7 @@ class TransferService:
         return job
 
     async def retry(self, job_id: str) -> TransferJob:
+        """Re-queue a failed/cancelled job from the beginning (does not skip dest files)."""
         job = self.jobs.get(job_id)
         if not job:
             raise KeyError(job_id)
@@ -147,10 +160,12 @@ class TransferService:
         return job
 
     def _cancelled(self, job_id: str) -> bool:
+        """True once cancel() has been requested for this job."""
         flag = self._cancel_flags.get(job_id)
         return bool(flag and flag.is_set())
 
     async def _worker_loop(self) -> None:
+        """Serial consumer: one job at a time from the asyncio queue."""
         while True:
             job_id = await self._queue.get()
             job = self.jobs.get(job_id)
@@ -172,6 +187,7 @@ class TransferService:
                 self._queue.task_done()
 
     async def _run_job(self, job: TransferJob) -> None:
+        """Relay each selected item (file or folder) through a per-job temp directory."""
         if self._cancelled(job.id):
             job.status = TransferStatus.cancelled
             job.message = "Cancelled"
@@ -205,14 +221,18 @@ class TransferService:
 
                 meta = job.source_meta.get(source_id) or {}
                 name = meta.get("name")
-                is_dir = bool(meta.get("is_dir"))
+                is_dir: bool | None = (
+                    bool(meta["is_dir"]) if "is_dir" in meta else None
+                )
 
-                # Resolve metadata if missing
-                if name is None:
+                # Look up name / is_dir when the UI omitted them (folder vs file).
+                if name is None or is_dir is None:
                     job.stage = TransferStage.listing
                     node = await src.get_node(source_id)
-                    name = node.name
-                    is_dir = node.is_dir
+                    if name is None:
+                        name = node.name
+                    if is_dir is None:
+                        is_dir = node.is_dir
 
                 job.current_file = name
                 job.message = f"Transferring {name}"
@@ -259,6 +279,7 @@ class TransferService:
         dest_parent_id: str | None,
         temp_root: Path,
     ) -> None:
+        """Create the dest folder, list source children, and recurse files/subfolders."""
         if self._cancelled(job.id):
             return
         job.stage = TransferStage.mkdir
@@ -290,6 +311,7 @@ class TransferService:
         dest_parent_id: str | None,
         temp_root: Path,
     ) -> None:
+        """Download one file to a unique temp subdir, then upload; always delete the subdir."""
         if self._cancelled(job.id):
             return
 
@@ -338,6 +360,7 @@ class TransferService:
             _rmtree_retry(work)
 
     def has_active_transfers(self) -> bool:
+        """True if any job is queued or running (blocks temp clear unless forced)."""
         return any(
             j.status in (TransferStatus.queued, TransferStatus.running)
             for j in self.jobs.values()
@@ -389,6 +412,7 @@ class TransferService:
 
 
 def _mark_failed(job: TransferJob, exc: BaseException) -> None:
+    """Set failed status and a message that includes the stage that broke (issue #13)."""
     job.status = TransferStatus.failed
     job.error = str(exc)
     label = job.stage_label()
@@ -396,6 +420,7 @@ def _mark_failed(job: TransferJob, exc: BaseException) -> None:
 
 
 def _fmt(n: int) -> str:
+    """Human-readable byte count for job messages (e.g. ``47.6 KB``)."""
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024:
             return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"

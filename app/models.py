@@ -1,3 +1,5 @@
+# Pydantic models and enums for auth, file listings, and transfer jobs.
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -11,6 +13,8 @@ Direction = Literal["mega_to_pikpak", "pikpak_to_mega"]
 
 
 class LoginRequest(BaseModel):
+    # Credentials for MEGA or PikPak login; MEGA may also send TOTP secret or a 6-digit code.
+
     username: str = Field(min_length=1)
     password: str = Field(min_length=1)
     # MEGA: one-shot 6-digit authenticator code (optional override)
@@ -20,6 +24,8 @@ class LoginRequest(BaseModel):
 
 
 class AuthProviderStatus(BaseModel):
+    # Connection state for one provider. ``totp_configured`` never includes the secret.
+
     connected: bool
     username: str | None = None
     error: str | None = None
@@ -28,11 +34,15 @@ class AuthProviderStatus(BaseModel):
 
 
 class AuthStatus(BaseModel):
+    # Both providers, as returned by ``GET /api/auth/status``.
+
     mega: AuthProviderStatus
     pikpak: AuthProviderStatus
 
 
 class FileNode(BaseModel):
+    # One file or folder in a provider listing.
+
     id: str
     name: str
     is_dir: bool
@@ -43,12 +53,16 @@ class FileNode(BaseModel):
 
 
 class FileListResponse(BaseModel):
+    # Children of ``parent_id`` (null = root) for one provider pane.
+
     provider: Provider
     parent_id: str | None = None
     items: list[FileNode]
 
 
 class TransferStatus(str, Enum):
+    # Lifecycle of a transfer job (queue → running → terminal).
+
     queued = "queued"
     running = "running"
     completed = "completed"
@@ -57,6 +71,8 @@ class TransferStatus(str, Enum):
 
 
 class TransferStage(str, Enum):
+    # Which step was last in progress — used when a job fails so the UI can say download vs upload.
+
     queued = "queued"
     auth = "auth"
     listing = "listing"
@@ -66,6 +82,8 @@ class TransferStage(str, Enum):
 
 
 class TransferCreateRequest(BaseModel):
+    # Queue a job: selected source ids, dest folder, and display metadata (name / is_dir).
+
     direction: Direction
     source_ids: list[str] = Field(min_length=1)
     # Destination folder id; null/empty = root
@@ -75,6 +93,8 @@ class TransferCreateRequest(BaseModel):
 
 
 class TransferJob(BaseModel):
+    # In-memory transfer record: progress, current file, stage, and cancel/retry state.
+
     id: str
     direction: Direction
     source_ids: list[str]
@@ -92,16 +112,19 @@ class TransferJob(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def touch(self) -> None:
+        # Bump ``updated_at`` after a status/progress change.
         self.updated_at = datetime.now(UTC)
 
     def source_label(self) -> str:
+        # Human name of the download side for this direction.
         return "MEGA" if self.direction == "mega_to_pikpak" else "PikPak"
 
     def dest_label(self) -> str:
+        # Human name of the upload side for this direction.
         return "PikPak" if self.direction == "mega_to_pikpak" else "MEGA"
 
     def stage_label(self) -> str | None:
-        """Human-readable stage, e.g. 'MEGA download'."""
+        # Human-readable stage, e.g. 'MEGA download'.
         if self.stage is None:
             return None
         mapping = {
@@ -116,9 +139,13 @@ class TransferJob(BaseModel):
 
 
 class TransferListResponse(BaseModel):
+    # All jobs, newest first (see ``TransferService.list_jobs``).
+
     jobs: list[TransferJob]
 
 
 class MessageResponse(BaseModel):
+    # Generic ok/message payload for login, logout, and similar actions.
+
     ok: bool = True
     message: str = ""

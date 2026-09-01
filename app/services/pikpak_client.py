@@ -20,6 +20,44 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[int, int], None]
 
 
+class _ProgressReader:
+    """File-like wrapper: reports the high-water mark of bytes read.
+
+    httpx/boto3 often seek(0) and read the body twice (length, then send).
+    Progress must not reset to 0% on the second pass.
+    """
+
+    def __init__(self, path: Path, on_progress: ProgressCallback | None) -> None:
+        self._fp = path.open("rb")
+        self._size = path.stat().st_size
+        self._high = 0
+        self._on_progress = on_progress
+        self.name = path.name
+
+    def read(self, n: int = -1) -> bytes:
+        data = self._fp.read(n)
+        pos = self._fp.tell()
+        if self._on_progress and pos > self._high:
+            self._high = pos
+            self._on_progress(self._high, self._size)
+        return data
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        return self._fp.seek(offset, whence)
+
+    def tell(self) -> int:
+        return self._fp.tell()
+
+    def close(self) -> None:
+        self._fp.close()
+
+    def __enter__(self) -> _ProgressReader:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
 def split_filename(name: str) -> tuple[str, str]:
     # Split 'file.v0.7.pdf' → ('file.v0.7', '.pdf'); no extension → (name, '').
     p = Path(name)
@@ -559,11 +597,11 @@ class PikPakAdapter:
             )
 
             try:
-                with local_path.open("rb") as f:
+                with _ProgressReader(local_path, on_progress) as body:
                     s3.put_object(
                         Bucket=bucket,
                         Key=key,
-                        Body=f,
+                        Body=body,
                         ContentLength=size,
                         ContentType="application/octet-stream",
                     )
@@ -613,11 +651,11 @@ class PikPakAdapter:
                 data[str(key)] = str(val)
 
         size = local_path.stat().st_size
-        # httpx multipart: pass data fields + file
+        # httpx multipart: pass data fields + file; wrapper reports bytes as they are read
         async with httpx.AsyncClient(timeout=None, follow_redirects=True) as http:
-            with local_path.open("rb") as f:
+            with _ProgressReader(local_path, on_progress) as body:
                 files = {
-                    "file": (local_path.name, f, "application/octet-stream"),
+                    "file": (local_path.name, body, "application/octet-stream"),
                 }
                 resp = await http.request(method, url, data=data, files=files)
                 if resp.status_code >= 400:

@@ -52,6 +52,8 @@ class TransferService:
         self._listeners: list[Listener] = []
         self._worker_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._last_notify: dict[str, float] = {}
 
     def add_listener(self, listener: Listener) -> None:
         """Register a callback (HTTP WS broadcast) invoked on every job update."""
@@ -72,6 +74,67 @@ class TransferService:
                     await result
             except Exception as exc:  # noqa: BLE001
                 logger.debug("listener error: %s", exc)
+
+    def _event_loop(self) -> asyncio.AbstractEventLoop | None:
+        if self._loop is not None and self._loop.is_running():
+            return self._loop
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            return None
+
+    def _refresh_progress(self, job: TransferJob) -> None:
+        """Overall % = completed files + half download + half upload of the current file.
+
+        Download and upload of the same file must not each fill the whole bar.
+        """
+        frac = 0.0
+        if job.bytes_total > 0:
+            frac = min(1.0, job.bytes_done / job.bytes_total)
+        if job.stage == TransferStage.download:
+            file_frac = 0.5 * frac
+        elif job.stage == TransferStage.upload:
+            file_frac = 0.5 + 0.5 * frac
+        else:
+            file_frac = 0.0
+        denom = max(job.files_total, 1)
+        job.progress = min(100.0, (job.files_done + file_frac) / denom * 100.0)
+
+    def _schedule_notify(self, job: TransferJob, *, force: bool = False) -> None:
+        """Push a job snapshot to WS listeners; throttle mid-file updates (~4/s)."""
+        now = time.monotonic()
+        last = self._last_notify.get(job.id, 0.0)
+        if not force and (now - last) < 0.25:
+            return
+        self._last_notify[job.id] = now
+        loop = self._event_loop()
+        if loop is None or not loop.is_running():
+            return
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is loop:
+            loop.create_task(self._notify(job))
+        else:
+            asyncio.run_coroutine_threadsafe(self._notify(job), loop)
+
+    def _on_file_progress(
+        self,
+        job: TransferJob,
+        verb: str,
+        file_name: str,
+        done: int,
+        total: int,
+    ) -> None:
+        """Sync callback from adapters (may run on a worker thread)."""
+        job.bytes_done = done
+        job.bytes_total = total or job.bytes_total
+        if job.bytes_total:
+            job.message = f"{verb} {file_name} ({_fmt(done)}/{_fmt(job.bytes_total)})"
+        self._refresh_progress(job)
+        finished = job.bytes_total > 0 and done >= job.bytes_total
+        self._schedule_notify(job, force=finished)
 
     def ensure_worker(self) -> None:
         """Start the background worker if it is not already running."""
@@ -149,6 +212,8 @@ class TransferService:
         job.progress = 0.0
         job.bytes_done = 0
         job.bytes_total = 0
+        job.files_done = 0
+        job.files_total = 0
         job.error = None
         job.message = "Re-queued"
         job.current_file = None
@@ -166,6 +231,7 @@ class TransferService:
 
     async def _worker_loop(self) -> None:
         """Serial consumer: one job at a time from the asyncio queue."""
+        self._loop = asyncio.get_running_loop()
         while True:
             job_id = await self._queue.get()
             job = self.jobs.get(job_id)
@@ -211,8 +277,15 @@ class TransferService:
         temp_root.mkdir(parents=True, exist_ok=True)
 
         try:
-            total_items = len(job.source_ids)
-            for index, source_id in enumerate(job.source_ids):
+            # Known files from the selection so 2 files show 0/2 from the start.
+            job.files_total = sum(
+                1
+                for sid in job.source_ids
+                if "is_dir" in (job.source_meta.get(sid) or {})
+                and not (job.source_meta.get(sid) or {}).get("is_dir")
+            )
+            job.files_done = 0
+            for source_id in job.source_ids:
                 if self._cancelled(job.id):
                     job.status = TransferStatus.cancelled
                     job.message = "Cancelled"
@@ -236,7 +309,7 @@ class TransferService:
 
                 job.current_file = name
                 job.message = f"Transferring {name}"
-                job.progress = (index / max(total_items, 1)) * 100
+                self._refresh_progress(job)
                 await self._notify(job)
 
                 if is_dir:
@@ -244,9 +317,14 @@ class TransferService:
                         job, src, dst, source_id, name, job.dest_parent_id, temp_root
                     )
                 else:
+                    if "is_dir" not in meta:
+                        job.files_total += 1
                     await self._transfer_file(
                         job, src, dst, source_id, name, job.dest_parent_id, temp_root
                     )
+                    if not self._cancelled(job.id):
+                        job.files_done += 1
+                        self._refresh_progress(job)
 
                 # Stop immediately after the step that noticed cancel
                 if self._cancelled(job.id):
@@ -255,7 +333,7 @@ class TransferService:
                     await self._notify(job)
                     return
 
-                job.progress = ((index + 1) / max(total_items, 1)) * 100
+                self._refresh_progress(job)
                 await self._notify(job)
 
             if self._cancelled(job.id):
@@ -287,6 +365,9 @@ class TransferService:
         new_parent = new_folder.id or dest_parent_id
         job.stage = TransferStage.listing
         children = await src.list_folder(folder_id)
+        job.files_total += sum(1 for child in children if not child.is_dir)
+        self._refresh_progress(job)
+        await self._notify(job)
         for child in children:
             if self._cancelled(job.id):
                 return
@@ -300,6 +381,10 @@ class TransferService:
                 await self._transfer_file(
                     job, src, dst, child.id, child.name, new_parent, temp_root
                 )
+                if not self._cancelled(job.id):
+                    job.files_done += 1
+                    self._refresh_progress(job)
+                    await self._notify(job)
 
     async def _transfer_file(
         self,
@@ -319,22 +404,17 @@ class TransferService:
         work.mkdir(parents=True, exist_ok=True)
 
         def on_dl(done: int, total: int) -> None:
-            job.bytes_done = done
-            job.bytes_total = total or job.bytes_total
-            if total:
-                # partial progress within current file doesn't move overall much
-                job.message = f"Downloading {file_name} ({_fmt(done)}/{_fmt(total)})"
+            self._on_file_progress(job, "Downloading", file_name, done, total)
 
         def on_ul(done: int, total: int) -> None:
-            job.bytes_done = done
-            job.bytes_total = total or job.bytes_total
-            if total:
-                job.message = f"Uploading {file_name} ({_fmt(done)}/{_fmt(total)})"
+            self._on_file_progress(job, "Uploading", file_name, done, total)
 
         try:
             if self._cancelled(job.id):
                 return
             job.stage = TransferStage.download
+            job.bytes_done = 0
+            job.bytes_total = 0
             local = await src.download_to_path(file_id, work, on_progress=on_dl)
             if self._cancelled(job.id):
                 job.message = "Cancelled after download"
@@ -345,6 +425,12 @@ class TransferService:
                 raise RuntimeError(f"Download produced no file for {file_name}")
             await self._notify(job)
             job.stage = TransferStage.upload
+            size = local.stat().st_size
+            job.bytes_done = 0
+            job.bytes_total = size
+            job.message = f"Uploading {file_name} ({_fmt(0)}/{_fmt(size)})"
+            self._refresh_progress(job)
+            await self._notify(job)
             await dst.upload_from_path(
                 local,
                 dest_parent_id,

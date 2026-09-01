@@ -529,6 +529,9 @@ class MegaAdapter:
         def _upload() -> Any:
             return m.upload(str(local_path), dest=dest, dest_filename=dest_name)
 
+        # mega.py has no upload callback; show 0/size then jump to complete.
+        if on_progress and size:
+            on_progress(0, size)
         await asyncio.to_thread(_upload)
         if on_progress and size:
             on_progress(size, size)

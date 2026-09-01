@@ -322,10 +322,17 @@
       const statusText =
         job.status === "failed" && stageLabel
           ? `failed · ${stageLabel}`
-          : job.status;
+          : job.status === "running" && stageLabel
+            ? `running · ${stageLabel}`
+            : job.status;
+      const filesTotal = job.files_total || 0;
+      const filesDone = job.files_done || 0;
+      const countLabel = filesTotal
+        ? `${filesDone}/${filesTotal} file(s)`
+        : `${job.source_ids.length} item(s)`;
       card.innerHTML = `
         <div class="job-top">
-          <div class="job-title">${dirLabel} · ${job.source_ids.length} item(s)</div>
+          <div class="job-title">${dirLabel} · ${countLabel}</div>
           <span class="job-status ${job.status}">${escapeHtml(statusText)}</span>
         </div>
         <div class="job-meta">

@@ -104,6 +104,8 @@ class TransferJob(BaseModel):
     progress: float = 0.0
     bytes_done: int = 0
     bytes_total: int = 0
+    files_done: int = 0
+    files_total: int = 0
     current_file: str | None = None
     message: str | None = None
     error: str | None = None

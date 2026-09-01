@@ -9,12 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Project documentation retrofit (`docs/`, GitHub issue/PR templates, CI workflow)
-- Opened GitHub issues for the gist backlog (#1-#16) and recorded them in `docs/roadmap.md` with an implementation order (ease × risk × priority, resolved vs open, and feature branch names)
-
 ### Changed
 
 ### Fixed
+
+- Transfer progress bar and byte counts update during download/upload, not only when a file finishes (#4)
 
 ## [1.0.2] - 2026-08-31
 
@@ -67,7 +66,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.0.1] - 2026-08-28
+
+### Added
+
+- Project documentation retrofit (`docs/`, GitHub issue/PR templates, CI workflow)
+- Opened GitHub issues for the gist backlog (#1-#16) and recorded them in `docs/roadmap.md` with an implementation order (ease × risk × priority, resolved vs open, and feature branch names)
+
+### Changed
+
+### Fixed
+
 [Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.2...HEAD
 [1.0.2]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/spellblade/Cloud-Copy/releases/tag/v1.0.0
+[0.0.1]: https://github.com/spellblade/Cloud-Copy/releases/tag/v1.0.0

@@ -520,29 +520,153 @@ class MegaAdapter:
         name: str | None = None,
         on_progress: ProgressCallback | None = None,
     ) -> FileNode:
-        # Upload a local file into ``parent_id`` via mega.py (sync, on a thread).
+        #Upload into ``parent_id`` with per-chunk progress (mega.py has no callback).
         m = self._require()
         dest = parent_id or self._root_id()
         dest_name = name or local_path.name
         size = local_path.stat().st_size
 
-        def _upload() -> Any:
-            return m.upload(str(local_path), dest=dest, dest_filename=dest_name)
+        def _upload() -> None:
+            try:
+                self._upload_file_with_progress(
+                    m, local_path, dest, dest_name, on_progress
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(_map_mega_error(exc, context="MEGA upload")) from exc
 
-        # mega.py has no upload callback; show 0/size then jump to complete.
-        if on_progress and size:
-            on_progress(0, size)
         await asyncio.to_thread(_upload)
-        if on_progress and size:
-            on_progress(size, size)
         await self._refresh_files_cache()
-        # Find uploaded file by name under parent
         for handle, node in self._files_cache.items():
             attrs = node.get("a") or {}
-            if node.get("p") == dest and attrs.get("n") == dest_name and int(node.get("t", 0)) == 0:
+            if (
+                node.get("p") == dest
+                and attrs.get("n") == dest_name
+                and int(node.get("t", 0)) == 0
+            ):
                 return self._node_to_file(handle, node)
-        # Fallback synthetic node
         return FileNode(id="", name=dest_name, is_dir=False, size=size, parent_id=dest)
+
+    @staticmethod
+    def _upload_file_with_progress(
+        mega: Any,
+        local_path: Path,
+        dest: str,
+        dest_filename: str,
+        on_progress: ProgressCallback | None,
+    ) -> None:
+        """Same chunked MEGA upload as mega.py ``upload()``, plus ``on_progress``."""
+        import random
+
+        import requests
+        from Crypto.Cipher import AES
+        from Crypto.Util import Counter
+        from mega.crypto import (
+            a32_to_base64,
+            a32_to_str,
+            base64_url_encode,
+            encrypt_attr,
+            encrypt_key,
+            get_chunks,
+            makebyte,
+            str_to_a32,
+        )
+
+        file_size = local_path.stat().st_size
+        ul_resp = mega._api_request({"a": "u", "s": file_size})
+        if not isinstance(ul_resp, dict) or "p" not in ul_resp:
+            raise RuntimeError(f"MEGA upload URL missing: {ul_resp!r}")
+        ul_url = ul_resp["p"]
+
+        ul_key = [random.randint(0, 0xFFFFFFFF) for _ in range(6)]
+        k_str = a32_to_str(ul_key[:4])
+        count = Counter.new(
+            128, initial_value=((ul_key[4] << 32) + ul_key[5]) << 64
+        )
+        aes = AES.new(k_str, AES.MODE_CTR, counter=count)
+
+        # Match mega.py upload(): CBC IV is 16 zero bytes.
+        mac_str = "\0" * 16
+        mac_encryptor = AES.new(k_str, AES.MODE_CBC, mac_str.encode("utf8"))
+        iv_str = a32_to_str([ul_key[4], ul_key[5], ul_key[4], ul_key[5]])
+        completion_file_handle = None
+        uploaded = 0
+
+        if on_progress:
+            on_progress(0, file_size)
+
+        with local_path.open("rb") as input_file:
+            if file_size > 0:
+                for chunk_start, chunk_size in get_chunks(file_size):
+                    chunk = input_file.read(chunk_size)
+                    uploaded += len(chunk)
+
+                    encryptor = AES.new(k_str, AES.MODE_CBC, iv_str)
+                    i = 0
+                    for i in range(0, len(chunk) - 16, 16):
+                        block = chunk[i : i + 16]
+                        encryptor.encrypt(block)
+
+                    if file_size > 16:
+                        i += 16
+                    else:
+                        i = 0
+
+                    block = chunk[i : i + 16]
+                    if len(block) % 16:
+                        block += makebyte("\0" * (16 - len(block) % 16))
+                    mac_str = mac_encryptor.encrypt(encryptor.encrypt(block))
+
+                    chunk = aes.encrypt(chunk)
+                    output_file = requests.post(
+                        ul_url + "/" + str(chunk_start),
+                        data=chunk,
+                        timeout=getattr(mega, "timeout", 160),
+                    )
+                    output_file.raise_for_status()
+                    completion_file_handle = output_file.text
+                    if on_progress:
+                        on_progress(uploaded, file_size)
+            else:
+                output_file = requests.post(
+                    ul_url + "/0",
+                    data="",
+                    timeout=getattr(mega, "timeout", 160),
+                )
+                output_file.raise_for_status()
+                completion_file_handle = output_file.text
+
+        file_mac = str_to_a32(mac_str)
+        meta_mac = (file_mac[0] ^ file_mac[1], file_mac[2] ^ file_mac[3])
+        attribs = {"n": dest_filename}
+        encrypt_attribs = base64_url_encode(encrypt_attr(attribs, ul_key[:4]))
+        key = [
+            ul_key[0] ^ ul_key[4],
+            ul_key[1] ^ ul_key[5],
+            ul_key[2] ^ meta_mac[0],
+            ul_key[3] ^ meta_mac[1],
+            ul_key[4],
+            ul_key[5],
+            meta_mac[0],
+            meta_mac[1],
+        ]
+        encrypted_key = a32_to_base64(encrypt_key(key, mega.master_key))
+        mega._api_request(
+            {
+                "a": "p",
+                "t": dest,
+                "i": mega.request_id,
+                "n": [
+                    {
+                        "h": completion_file_handle,
+                        "t": 0,
+                        "a": encrypt_attribs,
+                        "k": encrypted_key,
+                    }
+                ],
+            }
+        )
+        if on_progress and file_size:
+            on_progress(file_size, file_size)
 
 
 mega_adapter = MegaAdapter()

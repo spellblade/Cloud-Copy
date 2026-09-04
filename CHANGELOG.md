@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - MEGA upload reports per-chunk progress (PikPak → MEGA no longer jumps from 0 to 100% on the upload half)
+- After cancel or fail, the worker starts the next queued job without needing cancel+retry on that second job (#6)
 
 ## [1.0.3] - 2026-09-01
 

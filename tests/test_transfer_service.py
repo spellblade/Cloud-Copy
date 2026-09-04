@@ -1,4 +1,5 @@
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
@@ -311,3 +312,78 @@ def test_progress_reader_does_not_reset_on_seek(tmp_path):
     assert seen
     assert seen[-1] == 10
     assert seen == sorted(seen)
+
+
+class _BlockFirstDownloadSrc:
+    """First download blocks until ``release``; later downloads finish immediately."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    def is_authenticated(self) -> bool:
+        return True
+
+    async def get_node(self, file_id: str) -> FileNode:
+        return FileNode(id=file_id, name=f"{file_id}.bin", is_dir=False, size=1)
+
+    async def download_to_path(self, file_id: str, dest_dir: Path, on_progress=None) -> Path:
+        if file_id == "slow":
+            self.started.set()
+            await self.release.wait()
+        path = dest_dir / f"{file_id}.bin"
+        path.write_bytes(b"x")
+        if on_progress:
+            on_progress(1, 1)
+        return path
+
+
+class _FastDst:
+    def is_authenticated(self) -> bool:
+        return True
+
+    async def upload_from_path(self, local_path: Path, parent_id: str | None, name=None, on_progress=None):
+        if on_progress:
+            on_progress(1, 1)
+        return FileNode(id="u", name=name or local_path.name, is_dir=False)
+
+
+@pytest.mark.asyncio
+async def test_cancel_starts_next_queued_job(monkeypatch, tmp_path):
+    """Cancelling a blocked job must let the next queued job run (issue #6)."""
+    src = _BlockFirstDownloadSrc()
+    monkeypatch.setattr(ts_mod, "mega_adapter", src)
+    monkeypatch.setattr(ts_mod, "pikpak_adapter", _FastDst())
+    monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
+
+    svc = TransferService()
+    job1 = await svc.create_job(
+        direction="mega_to_pikpak",
+        source_ids=["slow"],
+        dest_parent_id=None,
+        source_meta={"slow": {"name": "slow.bin", "is_dir": False}},
+    )
+    await asyncio.wait_for(src.started.wait(), timeout=2)
+
+    job2 = await svc.create_job(
+        direction="mega_to_pikpak",
+        source_ids=["fast"],
+        dest_parent_id=None,
+        source_meta={"fast": {"name": "fast.bin", "is_dir": False}},
+    )
+    assert job2.status == TransferStatus.queued
+
+    await svc.cancel(job1.id)
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        j2 = svc.get_job(job2.id)
+        if j2 and j2.status in (TransferStatus.running, TransferStatus.completed):
+            break
+        await asyncio.sleep(0.1)
+    else:
+        j2 = svc.get_job(job2.id)
+        raise AssertionError(f"job2 stayed {j2.status if j2 else None}, expected running/completed")
+
+    src.release.set()
+    assert svc.get_job(job1.id).status == TransferStatus.cancelled

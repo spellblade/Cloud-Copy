@@ -1,6 +1,6 @@
 [project]
 name = "cloud-copy"
-version = "1.0.3"
+version = "1.0.4"
 description = "Local MEGA ↔ PikPak file transfer web app"
 readme = "README.md"
 requires-python = ">=3.11"

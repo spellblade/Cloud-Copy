@@ -136,6 +136,36 @@ class TransferService:
         finished = job.bytes_total > 0 and done >= job.bytes_total
         self._schedule_notify(job, force=finished)
 
+    async def _await_step(self, job: TransferJob, coro: Any) -> Any:
+        """Wait for an adapter call, but stop waiting if the job is cancelled.
+
+        MEGA/PikPak work often runs in a thread that cannot be killed. We leave
+        that task in the background so this worker can take the next queued job.
+        """
+        task = asyncio.ensure_future(coro)
+        try:
+            while not task.done():
+                if self._cancelled(job.id):
+                    logger.info(
+                        "Job %s cancelled; abandoning in-flight step so the queue can continue",
+                        job.id,
+                    )
+
+                    def _consume(done: asyncio.Task) -> None:
+                        try:
+                            done.result()
+                        except Exception as exc:  # noqa: BLE001
+                            logger.debug("abandoned step finished: %s", exc)
+
+                    task.add_done_callback(_consume)
+                    return None
+                await asyncio.wait({task}, timeout=0.5)
+            return task.result()
+        except Exception:
+            if not task.done():
+                task.add_done_callback(lambda t: t.exception())
+            raise
+
     def ensure_worker(self) -> None:
         """Start the background worker if it is not already running."""
         if self._worker_task is None or self._worker_task.done():
@@ -187,17 +217,15 @@ class TransferService:
         if flag:
             flag.set()
 
-        # Immediate UI feedback. If a download/upload is mid-flight in a worker
-        # thread it cannot be hard-killed; we stop before the next step.
+        # Immediate UI feedback. An in-flight thread cannot be killed; the
+        # worker stops waiting on it so the next queued job can start.
         if job.status == TransferStatus.queued:
             job.status = TransferStatus.cancelled
             job.message = "Cancelled"
             job.error = None
         else:
             job.status = TransferStatus.cancelled
-            job.message = (
-                "Cancel requested — stopping after the current download/upload step"
-            )
+            job.message = "Cancel requested — stopping this job so the queue can continue"
         await self._notify(job)
         return job
 
@@ -361,10 +389,16 @@ class TransferService:
         if self._cancelled(job.id):
             return
         job.stage = TransferStage.mkdir
-        new_folder = await dst.mkdir(dest_parent_id, folder_name)
+        new_folder = await self._await_step(
+            job, dst.mkdir(dest_parent_id, folder_name)
+        )
+        if new_folder is None or self._cancelled(job.id):
+            return
         new_parent = new_folder.id or dest_parent_id
         job.stage = TransferStage.listing
-        children = await src.list_folder(folder_id)
+        children = await self._await_step(job, src.list_folder(folder_id))
+        if children is None or self._cancelled(job.id):
+            return
         job.files_total += sum(1 for child in children if not child.is_dir)
         self._refresh_progress(job)
         await self._notify(job)
@@ -415,9 +449,11 @@ class TransferService:
             job.stage = TransferStage.download
             job.bytes_done = 0
             job.bytes_total = 0
-            local = await src.download_to_path(file_id, work, on_progress=on_dl)
-            if self._cancelled(job.id):
-                job.message = "Cancelled after download"
+            local = await self._await_step(
+                job, src.download_to_path(file_id, work, on_progress=on_dl)
+            )
+            if local is None or self._cancelled(job.id):
+                job.message = "Cancelled"
                 await self._notify(job)
                 return
             # Ensure path is a real closed file before upload
@@ -431,13 +467,16 @@ class TransferService:
             job.message = f"Uploading {file_name} ({_fmt(0)}/{_fmt(size)})"
             self._refresh_progress(job)
             await self._notify(job)
-            await dst.upload_from_path(
-                local,
-                dest_parent_id,
-                name=file_name,
-                on_progress=on_ul,
+            uploaded = await self._await_step(
+                job,
+                dst.upload_from_path(
+                    local,
+                    dest_parent_id,
+                    name=file_name,
+                    on_progress=on_ul,
+                ),
             )
-            if self._cancelled(job.id):
+            if uploaded is None or self._cancelled(job.id):
                 job.message = "Cancelled"
                 await self._notify(job)
                 return

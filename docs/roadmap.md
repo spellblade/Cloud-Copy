@@ -46,7 +46,7 @@ Work sequence (ease × risk × priority). **Branch** is a plain name (no link); 
 | 3 | [#9](https://github.com/spellblade/Cloud-Copy/issues/9) File-list UI | Yes | `feat/file-list-ui` |
 | 4 | [#5](https://github.com/spellblade/Cloud-Copy/issues/5) Folder select | Yes | `feat/folder-select` |
 | 5 | [#4](https://github.com/spellblade/Cloud-Copy/issues/4) Live progress | Yes | `feat/live-progress` |
-| 6 | [#6](https://github.com/spellblade/Cloud-Copy/issues/6) Queue stuck | No | `feat/queue-stuck` |
+| 6 | [#6](https://github.com/spellblade/Cloud-Copy/issues/6) Queue stuck | Yes | `feat/queue-stuck` |
 | 7 | [#16](https://github.com/spellblade/Cloud-Copy/issues/16) Retry skip completed dest | No | — |
 | 8 | [#7](https://github.com/spellblade/Cloud-Copy/issues/7) MEGA timeout | No | — |
 | 9 | [#8](https://github.com/spellblade/Cloud-Copy/issues/8) PikPak SSL | No | — |

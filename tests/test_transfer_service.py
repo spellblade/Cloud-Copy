@@ -73,7 +73,7 @@ def test_failed_stage_label_reverse_download():
 
 
 class _SrcFolderTree:
-    """In-memory source: one folder with a file and a nested folder."""
+    # In-memory source: one folder with a file and a nested folder.
 
     def __init__(self) -> None:
         self.nodes = {
@@ -106,15 +106,19 @@ class _SrcFolderTree:
 
 
 class _DstRecorder:
-    """Destination that records mkdir/upload so tests can assert folder layout."""
+    # Destination that records mkdir/upload so tests can assert folder layout.
 
-    def __init__(self) -> None:
+    def __init__(self, existing: list[FileNode] | None = None) -> None:
         self.mkdirs: list[tuple[str | None, str, str]] = []
         self.uploads: list[tuple[str | None, str]] = []
+        self.existing = list(existing or [])
         self._n = 0
 
     def is_authenticated(self) -> bool:
         return True
+
+    async def list_folder(self, folder_id: str | None = None) -> list[FileNode]:
+        return list(self.existing)
 
     async def mkdir(self, parent_id: str | None, name: str) -> FileNode:
         self._n += 1
@@ -152,7 +156,7 @@ async def _run_folder_job(monkeypatch, tmp_path, source_meta: dict) -> tuple[Tra
 
 @pytest.mark.asyncio
 async def test_folder_meta_copies_children(monkeypatch, tmp_path):
-    """Selected folder with is_dir=True creates dest folder and copies nested files."""
+    # Selected folder with is_dir=True creates dest folder and copies nested files.
     job, dst = await _run_folder_job(
         monkeypatch,
         tmp_path,
@@ -171,7 +175,7 @@ async def test_folder_meta_copies_children(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_folder_without_is_dir_looks_up_node(monkeypatch, tmp_path):
-    """If the UI omits is_dir, get_node still classifies the source as a folder."""
+    # If the UI omits is_dir, get_node still classifies the source as a folder.
     job, dst = await _run_folder_job(
         monkeypatch,
         tmp_path,
@@ -185,7 +189,7 @@ async def test_folder_without_is_dir_looks_up_node(monkeypatch, tmp_path):
 
 
 class _ProgressSrc:
-    """Source that reports mid-file download bytes."""
+    # Source that reports mid-file download bytes.
 
     def is_authenticated(self) -> bool:
         return True
@@ -209,6 +213,9 @@ class _ProgressDst:
     def is_authenticated(self) -> bool:
         return True
 
+    async def list_folder(self, folder_id: str | None = None) -> list[FileNode]:
+        return []
+
     async def upload_from_path(self, local_path: Path, parent_id: str | None, name=None, on_progress=None):
         if on_progress:
             on_progress(40, 100)
@@ -219,7 +226,7 @@ class _ProgressDst:
 
 @pytest.mark.asyncio
 async def test_live_progress_notifies_mid_file(monkeypatch, tmp_path):
-    """WS snapshots should include in-flight bytes, not only 100/100 at the end."""
+    # WS snapshots should include in-flight bytes, not only 100/100 at the end.
     monkeypatch.setattr(ts_mod, "mega_adapter", _ProgressSrc())
     monkeypatch.setattr(ts_mod, "pikpak_adapter", _ProgressDst())
     monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
@@ -267,7 +274,7 @@ async def test_live_progress_notifies_mid_file(monkeypatch, tmp_path):
 
 
 def test_progress_download_is_first_half_of_each_file():
-    """Two files: finishing file 1 download is 25%, not 100%; upload start stays 25%."""
+    # Two files: finishing file 1 download is 25%, not 100%; upload start stays 25%.
     svc = TransferService()
     job = TransferJob(
         id="p",
@@ -299,7 +306,7 @@ def test_progress_download_is_first_half_of_each_file():
 
 
 def test_progress_reader_does_not_reset_on_seek(tmp_path):
-    """httpx/boto3 re-read must not drive the bar 0→100 a second time."""
+    # httpx/boto3 re-read must not drive the bar 0→100 a second time.
     from app.services.pikpak_client import _ProgressReader
 
     path = tmp_path / "chunk.bin"
@@ -315,7 +322,7 @@ def test_progress_reader_does_not_reset_on_seek(tmp_path):
 
 
 class _BlockFirstDownloadSrc:
-    """First download blocks until ``release``; later downloads finish immediately."""
+# First download blocks until ``release``; later downloads finish immediately.
 
     def __init__(self) -> None:
         self.started = asyncio.Event()
@@ -342,6 +349,9 @@ class _FastDst:
     def is_authenticated(self) -> bool:
         return True
 
+    async def list_folder(self, folder_id: str | None = None) -> list[FileNode]:
+        return []
+
     async def upload_from_path(self, local_path: Path, parent_id: str | None, name=None, on_progress=None):
         if on_progress:
             on_progress(1, 1)
@@ -350,7 +360,7 @@ class _FastDst:
 
 @pytest.mark.asyncio
 async def test_cancel_starts_next_queued_job(monkeypatch, tmp_path):
-    """Cancelling a blocked job must let the next queued job run (issue #6)."""
+    # Cancelling a blocked job must let the next queued job run (issue #6).
     src = _BlockFirstDownloadSrc()
     monkeypatch.setattr(ts_mod, "mega_adapter", src)
     monkeypatch.setattr(ts_mod, "pikpak_adapter", _FastDst())
@@ -387,3 +397,76 @@ async def test_cancel_starts_next_queued_job(monkeypatch, tmp_path):
 
     src.release.set()
     assert svc.get_job(job1.id).status == TransferStatus.cancelled
+
+
+class _TwoFileSrc:
+    def __init__(self) -> None:
+        self.downloads: list[str] = []
+        self.nodes = {
+            "a": FileNode(id="a", name="a.txt", is_dir=False, size=10),
+            "b": FileNode(id="b", name="b.txt", is_dir=False, size=10),
+        }
+
+    def is_authenticated(self) -> bool:
+        return True
+
+    async def get_node(self, file_id: str) -> FileNode:
+        return self.nodes[file_id]
+
+    async def download_to_path(self, file_id: str, dest_dir: Path, on_progress=None) -> Path:
+        self.downloads.append(file_id)
+        node = self.nodes[file_id]
+        path = dest_dir / node.name
+        path.write_bytes(b"x" * node.size)
+        if on_progress:
+            on_progress(node.size, node.size)
+        return path
+
+
+async def _run_two_file_job(monkeypatch, tmp_path, existing: list[FileNode]) -> tuple[TransferJob, _TwoFileSrc, _DstRecorder]:
+    src, dst = _TwoFileSrc(), _DstRecorder(existing=existing)
+    monkeypatch.setattr(ts_mod, "mega_adapter", src)
+    monkeypatch.setattr(ts_mod, "pikpak_adapter", dst)
+    monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
+    svc = TransferService()
+    job = TransferJob(
+        id="job-skip",
+        direction="mega_to_pikpak",
+        source_ids=["a", "b"],
+        dest_parent_id="dest-root",
+        source_meta={
+            "a": {"name": "a.txt", "is_dir": False, "size": 10},
+            "b": {"name": "b.txt", "is_dir": False, "size": 10},
+        },
+    )
+    svc.jobs[job.id] = job
+    svc._cancel_flags[job.id] = asyncio.Event()
+    await svc._run_job(job)
+    return job, src, dst
+
+
+@pytest.mark.asyncio
+async def test_skip_dest_file_same_name_and_size(monkeypatch, tmp_path):
+    # Retry must not re-download/upload a dest file with the same name and size (#16).
+    job, src, dst = await _run_two_file_job(
+        monkeypatch,
+        tmp_path,
+        [FileNode(id="e", name="a.txt", is_dir=False, size=10)],
+    )
+    assert job.status == TransferStatus.completed
+    assert src.downloads == ["b"]
+    assert [u[1] for u in dst.uploads] == ["b.txt"]
+    assert job.files_done == 2
+
+
+@pytest.mark.asyncio
+async def test_numbered_dest_suffix_is_not_the_original(monkeypatch, tmp_path):
+    # a(1).txt on dest must not skip transferring a.txt.
+    job, src, dst = await _run_two_file_job(
+        monkeypatch,
+        tmp_path,
+        [FileNode(id="e", name="a(1).txt", is_dir=False, size=10)],
+    )
+    assert job.status == TransferStatus.completed
+    assert src.downloads == ["a", "b"]
+    assert [u[1] for u in dst.uploads] == ["a.txt", "b.txt"]

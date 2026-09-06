@@ -1,4 +1,4 @@
-"""Serial transfer queue: download each item to local temp, then upload to the other cloud."""
+# Serial transfer queue: download each item to local temp, then upload to the other cloud.
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ Listener = Callable[[TransferJob], Any]
 
 
 def _rmtree_retry(path: Path, attempts: int = 5, delay: float = 0.25) -> None:
-    """Remove a directory tree; retry on Windows file-lock races."""
+    # Remove a directory tree; retry on Windows file-lock races.
     if not path.exists():
         return
     last_exc: Exception | None = None
@@ -43,7 +43,7 @@ def _rmtree_retry(path: Path, attempts: int = 5, delay: float = 0.25) -> None:
 
 
 class TransferService:
-    """In-memory job store plus one asyncio worker that runs jobs one at a time."""
+    # In-memory job store plus one asyncio worker that runs jobs one at a time.
 
     def __init__(self) -> None:
         self.jobs: dict[str, TransferJob] = {}
@@ -56,16 +56,16 @@ class TransferService:
         self._last_notify: dict[str, float] = {}
 
     def add_listener(self, listener: Listener) -> None:
-        """Register a callback (HTTP WS broadcast) invoked on every job update."""
+        # Register a callback (HTTP WS broadcast) invoked on every job update.
         self._listeners.append(listener)
 
     def remove_listener(self, listener: Listener) -> None:
-        """Unregister a listener if present."""
+        # Unregister a listener if present.
         if listener in self._listeners:
             self._listeners.remove(listener)
 
     async def _notify(self, job: TransferJob) -> None:
-        """Touch the job timestamp and fan out to listeners (sync or async)."""
+        # Touch the job timestamp and fan out to listeners (sync or async).
         job.touch()
         for listener in list(self._listeners):
             try:
@@ -84,10 +84,8 @@ class TransferService:
             return None
 
     def _refresh_progress(self, job: TransferJob) -> None:
-        """Overall % = completed files + half download + half upload of the current file.
-
-        Download and upload of the same file must not each fill the whole bar.
-        """
+        # Overall % = completed files + half download + half upload of the current file.
+        # Download and upload of the same file must not each fill the whole bar.
         frac = 0.0
         if job.bytes_total > 0:
             frac = min(1.0, job.bytes_done / job.bytes_total)
@@ -101,7 +99,7 @@ class TransferService:
         job.progress = min(100.0, (job.files_done + file_frac) / denom * 100.0)
 
     def _schedule_notify(self, job: TransferJob, *, force: bool = False) -> None:
-        """Push a job snapshot to WS listeners; throttle mid-file updates (~4/s)."""
+        # Push a job snapshot to WS listeners; throttle mid-file updates (~4/s).
         now = time.monotonic()
         last = self._last_notify.get(job.id, 0.0)
         if not force and (now - last) < 0.25:
@@ -127,7 +125,7 @@ class TransferService:
         done: int,
         total: int,
     ) -> None:
-        """Sync callback from adapters (may run on a worker thread)."""
+        # Sync callback from adapters (may run on a worker thread).
         job.bytes_done = done
         job.bytes_total = total or job.bytes_total
         if job.bytes_total:
@@ -137,11 +135,10 @@ class TransferService:
         self._schedule_notify(job, force=finished)
 
     async def _await_step(self, job: TransferJob, coro: Any) -> Any:
-        """Wait for an adapter call, but stop waiting if the job is cancelled.
+        # Wait for an adapter call, but stop waiting if the job is cancelled.
 
-        MEGA/PikPak work often runs in a thread that cannot be killed. We leave
-        that task in the background so this worker can take the next queued job.
-        """
+        # MEGA/PikPak work often runs in a thread that cannot be killed. We leave
+        # that task in the background so this worker can take the next queued job.
         task = asyncio.ensure_future(coro)
         try:
             while not task.done():
@@ -166,8 +163,35 @@ class TransferService:
                 task.add_done_callback(lambda t: t.exception())
             raise
 
+    @staticmethod
+    def _dest_has_complete_copy(
+        dest_files: list[Any],
+        file_name: str,
+        source_size: int | None,
+    ) -> bool:
+        # True if dest already has this exact name and size (not a ``(n)`` sibling).
+        for item in dest_files:
+            if getattr(item, "is_dir", False):
+                continue
+            if getattr(item, "name", None) != file_name:
+                continue
+            dest_size = int(getattr(item, "size", 0) or 0)
+            if source_size is None:
+                return dest_size == 0
+            return dest_size == int(source_size)
+        return False
+
+    async def _list_dest_files(
+        self, job: TransferJob, dst: Any, dest_parent_id: str | None
+    ) -> list[Any] | None:
+        # Files in the dest folder, or None if the job was cancelled mid-list.
+        items = await self._await_step(job, dst.list_folder(dest_parent_id))
+        if items is None:
+            return None
+        return [i for i in items if not getattr(i, "is_dir", False)]
+
     def ensure_worker(self) -> None:
-        """Start the background worker if it is not already running."""
+        # Start the background worker if it is not already running.
         if self._worker_task is None or self._worker_task.done():
             self._worker_task = asyncio.create_task(self._worker_loop())
 
@@ -178,7 +202,7 @@ class TransferService:
         dest_parent_id: str | None,
         source_meta: dict[str, dict] | None = None,
     ) -> TransferJob:
-        """Create a queued job, start the worker, and push the id onto the queue."""
+    # Create a queued job, start the worker, and push the id onto the queue.
         job = TransferJob(
             id=str(uuid.uuid4()),
             direction=direction,
@@ -195,15 +219,15 @@ class TransferService:
         return job
 
     def list_jobs(self) -> list[TransferJob]:
-        """All jobs, newest first."""
+        # All jobs, newest first.
         return sorted(self.jobs.values(), key=lambda j: j.created_at, reverse=True)
 
     def get_job(self, job_id: str) -> TransferJob | None:
-        """Look up one job, or None."""
+        # Look up one job, or None.
         return self.jobs.get(job_id)
 
     async def cancel(self, job_id: str) -> TransferJob:
-        """Mark queued jobs cancelled immediately; running jobs stop after the current step."""
+        # Mark queued jobs cancelled immediately; running jobs stop after the current step.
         job = self.jobs.get(job_id)
         if not job:
             raise KeyError(job_id)
@@ -230,7 +254,7 @@ class TransferService:
         return job
 
     async def retry(self, job_id: str) -> TransferJob:
-        """Re-queue a failed/cancelled job from the beginning (does not skip dest files)."""
+        # Re-queue a failed/cancelled job. Complete dest files are skipped on the next run.
         job = self.jobs.get(job_id)
         if not job:
             raise KeyError(job_id)
@@ -253,12 +277,12 @@ class TransferService:
         return job
 
     def _cancelled(self, job_id: str) -> bool:
-        """True once cancel() has been requested for this job."""
+        # True once cancel() has been requested for this job.
         flag = self._cancel_flags.get(job_id)
         return bool(flag and flag.is_set())
 
     async def _worker_loop(self) -> None:
-        """Serial consumer: one job at a time from the asyncio queue."""
+        # Serial consumer: one job at a time from the asyncio queue.
         self._loop = asyncio.get_running_loop()
         while True:
             job_id = await self._queue.get()
@@ -281,7 +305,7 @@ class TransferService:
                 self._queue.task_done()
 
     async def _run_job(self, job: TransferJob) -> None:
-        """Relay each selected item (file or folder) through a per-job temp directory."""
+        # Relay each selected item (file or folder) through a per-job temp directory.
         if self._cancelled(job.id):
             job.status = TransferStatus.cancelled
             job.message = "Cancelled"
@@ -313,6 +337,12 @@ class TransferService:
                 and not (job.source_meta.get(sid) or {}).get("is_dir")
             )
             job.files_done = 0
+            dest_files = await self._list_dest_files(job, dst, job.dest_parent_id)
+            if dest_files is None:
+                job.status = TransferStatus.cancelled
+                job.message = "Cancelled"
+                await self._notify(job)
+                return
             for source_id in job.source_ids:
                 if self._cancelled(job.id):
                     job.status = TransferStatus.cancelled
@@ -347,8 +377,22 @@ class TransferService:
                 else:
                     if "is_dir" not in meta:
                         job.files_total += 1
+                    src_size = meta.get("size")
+                    if src_size is not None:
+                        try:
+                            src_size = int(src_size)
+                        except (TypeError, ValueError):
+                            src_size = None
                     await self._transfer_file(
-                        job, src, dst, source_id, name, job.dest_parent_id, temp_root
+                        job,
+                        src,
+                        dst,
+                        source_id,
+                        name,
+                        job.dest_parent_id,
+                        temp_root,
+                        source_size=src_size,
+                        dest_files=dest_files,
                     )
                     if not self._cancelled(job.id):
                         job.files_done += 1
@@ -385,7 +429,7 @@ class TransferService:
         dest_parent_id: str | None,
         temp_root: Path,
     ) -> None:
-        """Create the dest folder, list source children, and recurse files/subfolders."""
+    # Create the dest folder, list source children, and recurse files/subfolders.
         if self._cancelled(job.id):
             return
         job.stage = TransferStage.mkdir
@@ -402,6 +446,9 @@ class TransferService:
         job.files_total += sum(1 for child in children if not child.is_dir)
         self._refresh_progress(job)
         await self._notify(job)
+        dest_files = await self._list_dest_files(job, dst, new_parent)
+        if dest_files is None:
+            return
         for child in children:
             if self._cancelled(job.id):
                 return
@@ -413,7 +460,15 @@ class TransferService:
                 )
             else:
                 await self._transfer_file(
-                    job, src, dst, child.id, child.name, new_parent, temp_root
+                    job,
+                    src,
+                    dst,
+                    child.id,
+                    child.name,
+                    new_parent,
+                    temp_root,
+                    source_size=int(child.size or 0),
+                    dest_files=dest_files,
                 )
                 if not self._cancelled(job.id):
                     job.files_done += 1
@@ -429,9 +484,23 @@ class TransferService:
         file_name: str,
         dest_parent_id: str | None,
         temp_root: Path,
+        source_size: int | None = None,
+        dest_files: list[Any] | None = None,
     ) -> None:
-        """Download one file to a unique temp subdir, then upload; always delete the subdir."""
+    # Download one file to a unique temp subdir, then upload; skip if dest already has it.
         if self._cancelled(job.id):
+            return
+
+        if dest_files is None:
+            dest_files = await self._list_dest_files(job, dst, dest_parent_id)
+            if dest_files is None:
+                return
+        if self._dest_has_complete_copy(dest_files, file_name, source_size):
+            job.message = f"Skipping {file_name} (already on dest)"
+            job.bytes_done = int(source_size or 0)
+            job.bytes_total = int(source_size or 0)
+            self._refresh_progress(job)
+            await self._notify(job)
             return
 
         work = temp_root / uuid.uuid4().hex
@@ -485,14 +554,14 @@ class TransferService:
             _rmtree_retry(work)
 
     def has_active_transfers(self) -> bool:
-        """True if any job is queued or running (blocks temp clear unless forced)."""
+        # True if any job is queued or running (blocks temp clear unless forced).
         return any(
             j.status in (TransferStatus.queued, TransferStatus.running)
             for j in self.jobs.values()
         )
 
     def clear_temp_dir(self, force: bool = False) -> dict[str, Any]:
-        """Delete contents of the app temp directory. Refuses if jobs are active unless force."""
+        # Delete contents of the app temp directory. Refuses if jobs are active unless force.
         if self.has_active_transfers() and not force:
             raise RuntimeError(
                 "Cannot clear temp while transfers are queued or running. "
@@ -537,7 +606,7 @@ class TransferService:
 
 
 def _mark_failed(job: TransferJob, exc: BaseException) -> None:
-    """Set failed status and a message that includes the stage that broke (issue #13)."""
+    # Set failed status and a message that includes the stage that broke (issue #13).
     job.status = TransferStatus.failed
     job.error = str(exc)
     label = job.stage_label()
@@ -545,7 +614,7 @@ def _mark_failed(job: TransferJob, exc: BaseException) -> None:
 
 
 def _fmt(n: int) -> str:
-    """Human-readable byte count for job messages (e.g. ``47.6 KB``)."""
+    # Human-readable byte count for job messages (e.g. ``47.6 KB``).
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024:
             return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"

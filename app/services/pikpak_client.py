@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import ssl
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -18,6 +19,40 @@ from app.services.credential_store import credential_store
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[int, int], None]
+
+_UPLOAD_STREAM_ATTEMPTS = 3
+
+
+def is_retryable_pikpak_upload_error(exc: BaseException) -> bool:
+    """Transient SSL/EOF on PikPak OSS — not AccessDenied or HTTP 4xx tickets."""
+    types: tuple[type, ...] = (
+        ssl.SSLError,
+        httpx.RemoteProtocolError,
+        httpx.ConnectError,
+        httpx.ReadError,
+        httpx.TimeoutException,
+    )
+    try:
+        from botocore.exceptions import SSLError as BotoSSLError
+
+        types = (*types, BotoSSLError)
+    except ImportError:
+        pass
+    if isinstance(exc, types):
+        return True
+    msg = str(exc).lower()
+    if "accessdenied" in msg or "access denied" in msg:
+        return False
+    if "http 4" in msg:
+        return False
+    needles = (
+        "eof occurred in violation of protocol",
+        "ssl validation failed",
+        "unexpected eof",
+        "connection reset",
+        "broken pipe",
+    )
+    return any(n in msg for n in needles)
 
 
 class _ProgressReader:
@@ -375,7 +410,7 @@ class PikPakAdapter:
         - If desired name is free → keep it (rename back if API adds spurious (1)).
         - If taken → use name(1).ext, name(2).ext, … (never overwrite).
 
-        Prefer FORM for smaller files; S3 for larger with FORM fallback.
+        Prefer FORM (all sizes); resumable S3 only if FORM fails.
         """
         desired_name = name or local_path.name
         size = local_path.stat().st_size
@@ -391,46 +426,7 @@ class PikPakAdapter:
                 target_name,
             )
 
-        # FORM is more reliable for modest sizes; S3 for large (with fallback)
-        form_cutoff = 200 * 1024 * 1024  # 200 MiB
-        prefer_form = size < form_cutoff
-
-        if prefer_form:
-            try:
-                return await self._upload_with_type(
-                    local_path,
-                    target_name,
-                    parent,
-                    gcid,
-                    size,
-                    upload_type="UPLOAD_TYPE_FORM",
-                    on_progress=on_progress,
-                )
-            except Exception as form_exc:  # noqa: BLE001
-                logger.warning(
-                    "PikPak FORM upload failed (%s); trying resumable S3",
-                    type(form_exc).__name__,
-                )
-
         try:
-            return await self._upload_with_type(
-                local_path,
-                target_name,
-                parent,
-                gcid,
-                size,
-                upload_type="UPLOAD_TYPE_RESUMABLE",
-                on_progress=on_progress,
-            )
-        except Exception as s3_exc:  # noqa: BLE001
-            msg = str(s3_exc)
-            if "AccessDenied" not in msg and "access denied" not in msg.lower():
-                raise
-            if prefer_form:
-                raise RuntimeError(
-                    f"PikPak storage rejected upload (AccessDenied) and FORM also failed: {s3_exc}"
-                ) from s3_exc
-            logger.warning("PikPak S3 AccessDenied; falling back to FORM upload")
             return await self._upload_with_type(
                 local_path,
                 target_name,
@@ -440,6 +436,21 @@ class PikPakAdapter:
                 upload_type="UPLOAD_TYPE_FORM",
                 on_progress=on_progress,
             )
+        except Exception as form_exc:  # noqa: BLE001
+            logger.warning(
+                "PikPak FORM upload failed (%s); trying resumable S3",
+                type(form_exc).__name__,
+            )
+
+        return await self._upload_with_type(
+            local_path,
+            target_name,
+            parent,
+            gcid,
+            size,
+            upload_type="UPLOAD_TYPE_RESUMABLE",
+            on_progress=on_progress,
+        )
 
     async def _upload_with_type(
         self,
@@ -450,6 +461,7 @@ class PikPakAdapter:
         size: int,
         upload_type: str,
         on_progress: ProgressCallback | None = None,
+        ticket_retry: int = 2,
     ) -> FileNode:
         # Create the PikPak file ticket, upload FORM or S3, then repair the final name.
         client = self._require()
@@ -516,8 +528,25 @@ class PikPakAdapter:
                     dest_name,
                 )
                 await self._upload_s3(local_path, params, on_progress)
-        except Exception:
+        except Exception as exc:
             await self._cancel_incomplete_upload(file_id, task_id)
+            if ticket_retry > 0 and is_retryable_pikpak_upload_error(exc):
+                logger.warning(
+                    "PikPak upload SSL/EOF (%s); minting a new ticket (%s left)",
+                    type(exc).__name__,
+                    ticket_retry,
+                )
+                await asyncio.sleep(2)
+                return await self._upload_with_type(
+                    local_path,
+                    dest_name,
+                    parent_id,
+                    gcid,
+                    size,
+                    upload_type,
+                    on_progress=on_progress,
+                    ticket_retry=ticket_retry - 1,
+                )
             raise
 
         if task_id:
@@ -555,6 +584,7 @@ class PikPakAdapter:
 
         def _put() -> None:
             import boto3
+            from boto3.s3.transfer import TransferConfig
             from botocore.config import Config
             from botocore.exceptions import ClientError
 
@@ -566,7 +596,6 @@ class PikPakAdapter:
             endpoint = params.get("endpoint") or "https://mypikpak.com/"
             if not str(endpoint).startswith("http"):
                 endpoint = f"https://{endpoint}"
-            # boto prefers no trailing path noise
             endpoint = str(endpoint).rstrip("/") + "/"
 
             if not all([access_key, secret, bucket, key]):
@@ -574,7 +603,6 @@ class PikPakAdapter:
 
             size = local_path.stat().st_size
             # Disable optional checksums — PikPak STS policy rejects extra amz headers
-            # (same idea as rclone's RequestChecksumCalculationWhenRequired)
             cfg = Config(
                 signature_version="s3v4",
                 s3={
@@ -585,33 +613,109 @@ class PikPakAdapter:
                 response_checksum_validation="when_required",
                 retries={"max_attempts": 3, "mode": "standard"},
             )
-            session = boto3.session.Session()
-            s3 = session.client(
-                "s3",
-                aws_access_key_id=access_key,
-                aws_secret_access_key=secret,
-                aws_session_token=token,
-                endpoint_url=endpoint,
-                region_name="pikpak",
-                config=cfg,
+            # Single PutObject of a multi-GB body dies on SSL EOF; multipart
+            # keeps each part small enough that a drop only retries that part.
+            xfer = TransferConfig(
+                multipart_threshold=8 * 1024 * 1024,
+                multipart_chunksize=16 * 1024 * 1024,
+                max_concurrency=2,
+                use_threads=True,
             )
 
-            try:
-                with _ProgressReader(local_path, on_progress) as body:
-                    s3.put_object(
-                        Bucket=bucket,
-                        Key=key,
-                        Body=body,
-                        ContentLength=size,
-                        ContentType="application/octet-stream",
+            last_exc: Exception | None = None
+            for attempt in range(1, _UPLOAD_STREAM_ATTEMPTS + 1):
+                session = boto3.session.Session()
+                s3 = session.client(
+                    "s3",
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret,
+                    aws_session_token=token,
+                    endpoint_url=endpoint,
+                    region_name="pikpak",
+                    config=cfg,
+                )
+                uploaded = [0]
+
+                def _cb(n: int) -> None:
+                    uploaded[0] += n
+                    if on_progress:
+                        on_progress(uploaded[0], size)
+
+                try:
+                    with local_path.open("rb") as body:
+                        try:
+                            s3.upload_fileobj(
+                                body,
+                                bucket,
+                                key,
+                                ExtraArgs={"ContentType": "application/octet-stream"},
+                                Config=xfer,
+                                Callback=_cb,
+                            )
+                        except ClientError as exc:
+                            code = (exc.response or {}).get("Error", {}).get("Code", "")
+                            if code in (
+                                "AccessDenied",
+                                "InvalidAccessKeyId",
+                                "SignatureDoesNotMatch",
+                            ):
+                                raise RuntimeError(
+                                    f"AccessDenied when calling PutObject: {exc}"
+                                ) from exc
+                            # Some OSS tickets reject multipart; fall back to one PUT.
+                            if code in (
+                                "NotImplemented",
+                                "InvalidRequest",
+                                "MethodNotAllowed",
+                            ):
+                                logger.warning(
+                                    "PikPak OSS multipart unsupported (%s); using PutObject",
+                                    code,
+                                )
+                                body.seek(0)
+                                with _ProgressReader(local_path, on_progress) as reader:
+                                    s3.put_object(
+                                        Bucket=bucket,
+                                        Key=key,
+                                        Body=reader,
+                                        ContentLength=size,
+                                        ContentType="application/octet-stream",
+                                    )
+                            else:
+                                raise
+                    last_exc = None
+                    break
+                except ClientError as exc:
+                    code = (exc.response or {}).get("Error", {}).get("Code", "")
+                    if code in ("AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch"):
+                        raise RuntimeError(
+                            f"AccessDenied when calling PutObject: {exc}"
+                        ) from exc
+                    last_exc = exc
+                except Exception as exc:
+                    last_exc = exc
+                if last_exc is None:
+                    break
+                if (
+                    not is_retryable_pikpak_upload_error(last_exc)
+                    or attempt >= _UPLOAD_STREAM_ATTEMPTS
+                ):
+                    logger.warning(
+                        "PikPak S3 upload attempt %s/%s failed (%s)",
+                        attempt,
+                        _UPLOAD_STREAM_ATTEMPTS,
+                        type(last_exc).__name__,
                     )
-            except ClientError as exc:
-                code = (exc.response or {}).get("Error", {}).get("Code", "")
-                if code in ("AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch"):
-                    raise RuntimeError(
-                        f"AccessDenied when calling PutObject: {exc}"
-                    ) from exc
-                raise
+                    raise last_exc
+                delay = 2**attempt
+                logger.warning(
+                    "PikPak S3 upload attempt %s/%s failed (%s); retrying in %ss",
+                    attempt,
+                    _UPLOAD_STREAM_ATTEMPTS,
+                    type(last_exc).__name__,
+                    delay,
+                )
+                time.sleep(delay)
             if on_progress:
                 on_progress(size, size)
 
@@ -651,18 +755,37 @@ class PikPakAdapter:
                 data[str(key)] = str(val)
 
         size = local_path.stat().st_size
-        # httpx multipart: pass data fields + file; wrapper reports bytes as they are read
-        async with httpx.AsyncClient(timeout=None, follow_redirects=True) as http:
-            with _ProgressReader(local_path, on_progress) as body:
-                files = {
-                    "file": (local_path.name, body, "application/octet-stream"),
-                }
-                resp = await http.request(method, url, data=data, files=files)
-                if resp.status_code >= 400:
-                    body_snip = (resp.text or "")[:300]
-                    raise RuntimeError(
-                        f"PikPak FORM upload failed HTTP {resp.status_code}: {body_snip}"
-                    )
+        last_exc: Exception | None = None
+        for attempt in range(1, _UPLOAD_STREAM_ATTEMPTS + 1):
+            try:
+                async with httpx.AsyncClient(timeout=None, follow_redirects=True) as http:
+                    with _ProgressReader(local_path, on_progress) as body:
+                        files = {
+                            "file": (local_path.name, body, "application/octet-stream"),
+                        }
+                        resp = await http.request(method, url, data=data, files=files)
+                        if resp.status_code >= 400:
+                            body_snip = (resp.text or "")[:300]
+                            raise RuntimeError(
+                                f"PikPak FORM upload failed HTTP {resp.status_code}: {body_snip}"
+                            )
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if not is_retryable_pikpak_upload_error(exc) or attempt >= _UPLOAD_STREAM_ATTEMPTS:
+                    raise
+                delay = 2**attempt
+                logger.warning(
+                    "PikPak FORM upload attempt %s/%s failed (%s); retrying in %ss",
+                    attempt,
+                    _UPLOAD_STREAM_ATTEMPTS,
+                    type(exc).__name__,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+        if last_exc:
+            raise last_exc
         if on_progress:
             on_progress(size, size)
 

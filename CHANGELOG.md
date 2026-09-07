@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Retry skips destination files that already have the same name and size; ``name(1).ext`` is not treated as the original (#16)
 - MEGA file download uses HTTPS storage URLs, a longer read timeout, and retries on timeout (#7)
-- PikPak large uploads use S3 multipart (16 MiB parts) and retry SSL EOF; fall back to FORM if S3 still fails (#8)
+- PikPak uploads try FORM first at any size (with SSL retries); S3 multipart only if FORM fails (#8)
 
 ## [1.0.4] - 2026-09-04
 

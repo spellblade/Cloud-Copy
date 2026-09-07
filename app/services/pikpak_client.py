@@ -410,7 +410,7 @@ class PikPakAdapter:
         - If desired name is free → keep it (rename back if API adds spurious (1)).
         - If taken → use name(1).ext, name(2).ext, … (never overwrite).
 
-        Prefer FORM for smaller files; S3 for larger with FORM fallback.
+        Prefer FORM (all sizes); resumable S3 only if FORM fails.
         """
         desired_name = name or local_path.name
         size = local_path.stat().st_size
@@ -426,51 +426,7 @@ class PikPakAdapter:
                 target_name,
             )
 
-        # FORM is more reliable for modest sizes; S3 for large (with fallback)
-        form_cutoff = 200 * 1024 * 1024  # 200 MiB
-        prefer_form = size < form_cutoff
-
-        if prefer_form:
-            try:
-                return await self._upload_with_type(
-                    local_path,
-                    target_name,
-                    parent,
-                    gcid,
-                    size,
-                    upload_type="UPLOAD_TYPE_FORM",
-                    on_progress=on_progress,
-                )
-            except Exception as form_exc:  # noqa: BLE001
-                logger.warning(
-                    "PikPak FORM upload failed (%s); trying resumable S3",
-                    type(form_exc).__name__,
-                )
-
         try:
-            return await self._upload_with_type(
-                local_path,
-                target_name,
-                parent,
-                gcid,
-                size,
-                upload_type="UPLOAD_TYPE_RESUMABLE",
-                on_progress=on_progress,
-            )
-        except Exception as s3_exc:  # noqa: BLE001
-            msg = str(s3_exc)
-            ssl_fail = is_retryable_pikpak_upload_error(s3_exc)
-            denied = "accessdenied" in msg.lower() or "access denied" in msg.lower()
-            if not ssl_fail and not denied:
-                raise
-            if prefer_form and denied:
-                raise RuntimeError(
-                    f"PikPak storage rejected upload (AccessDenied) and FORM also failed: {s3_exc}"
-                ) from s3_exc
-            logger.warning(
-                "PikPak S3 failed (%s); falling back to FORM upload",
-                type(s3_exc).__name__,
-            )
             return await self._upload_with_type(
                 local_path,
                 target_name,
@@ -480,6 +436,21 @@ class PikPakAdapter:
                 upload_type="UPLOAD_TYPE_FORM",
                 on_progress=on_progress,
             )
+        except Exception as form_exc:  # noqa: BLE001
+            logger.warning(
+                "PikPak FORM upload failed (%s); trying resumable S3",
+                type(form_exc).__name__,
+            )
+
+        return await self._upload_with_type(
+            local_path,
+            target_name,
+            parent,
+            gcid,
+            size,
+            upload_type="UPLOAD_TYPE_RESUMABLE",
+            on_progress=on_progress,
+        )
 
     async def _upload_with_type(
         self,

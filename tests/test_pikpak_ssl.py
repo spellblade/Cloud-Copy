@@ -15,6 +15,14 @@ def test_ssl_eof_is_retryable():
     )
     assert is_retryable_pikpak_upload_error(httpx.RemoteProtocolError("peer closed"))
     assert is_retryable_pikpak_upload_error(httpx.ConnectError("connection reset"))
+    try:
+        from botocore.exceptions import SSLError as BotoSSLError
+
+        assert is_retryable_pikpak_upload_error(
+            BotoSSLError(error=ssl.SSLError("EOF"), endpoint_url="https://upload-a10b.mypikpak.com/x")
+        )
+    except TypeError:
+        pass
 
 
 def test_access_denied_is_not_retryable():

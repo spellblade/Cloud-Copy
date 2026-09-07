@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import ssl
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -18,6 +19,36 @@ from app.services.credential_store import credential_store
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[int, int], None]
+
+_UPLOAD_STREAM_ATTEMPTS = 3
+
+
+def is_retryable_pikpak_upload_error(exc: BaseException) -> bool:
+    """Transient SSL/EOF on PikPak OSS — not AccessDenied or HTTP 4xx tickets."""
+    if isinstance(
+        exc,
+        (
+            ssl.SSLError,
+            httpx.RemoteProtocolError,
+            httpx.ConnectError,
+            httpx.ReadError,
+            httpx.TimeoutException,
+        ),
+    ):
+        return True
+    msg = str(exc).lower()
+    if "accessdenied" in msg or "access denied" in msg:
+        return False
+    if "http 4" in msg:
+        return False
+    needles = (
+        "eof occurred in violation of protocol",
+        "ssl validation failed",
+        "unexpected eof",
+        "connection reset",
+        "broken pipe",
+    )
+    return any(n in msg for n in needles)
 
 
 class _ProgressReader:
@@ -450,6 +481,7 @@ class PikPakAdapter:
         size: int,
         upload_type: str,
         on_progress: ProgressCallback | None = None,
+        ticket_retry: bool = True,
     ) -> FileNode:
         # Create the PikPak file ticket, upload FORM or S3, then repair the final name.
         client = self._require()
@@ -516,8 +548,24 @@ class PikPakAdapter:
                     dest_name,
                 )
                 await self._upload_s3(local_path, params, on_progress)
-        except Exception:
+        except Exception as exc:
             await self._cancel_incomplete_upload(file_id, task_id)
+            if ticket_retry and is_retryable_pikpak_upload_error(exc):
+                logger.warning(
+                    "PikPak upload SSL/EOF (%s); minting a new ticket",
+                    type(exc).__name__,
+                )
+                await asyncio.sleep(2)
+                return await self._upload_with_type(
+                    local_path,
+                    dest_name,
+                    parent_id,
+                    gcid,
+                    size,
+                    upload_type,
+                    on_progress=on_progress,
+                    ticket_retry=False,
+                )
             raise
 
         if task_id:
@@ -596,22 +644,41 @@ class PikPakAdapter:
                 config=cfg,
             )
 
-            try:
-                with _ProgressReader(local_path, on_progress) as body:
-                    s3.put_object(
-                        Bucket=bucket,
-                        Key=key,
-                        Body=body,
-                        ContentLength=size,
-                        ContentType="application/octet-stream",
-                    )
-            except ClientError as exc:
-                code = (exc.response or {}).get("Error", {}).get("Code", "")
-                if code in ("AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch"):
-                    raise RuntimeError(
-                        f"AccessDenied when calling PutObject: {exc}"
-                    ) from exc
-                raise
+            last_exc: Exception | None = None
+            for attempt in range(1, _UPLOAD_STREAM_ATTEMPTS + 1):
+                try:
+                    with _ProgressReader(local_path, on_progress) as body:
+                        s3.put_object(
+                            Bucket=bucket,
+                            Key=key,
+                            Body=body,
+                            ContentLength=size,
+                            ContentType="application/octet-stream",
+                        )
+                    last_exc = None
+                    break
+                except ClientError as exc:
+                    code = (exc.response or {}).get("Error", {}).get("Code", "")
+                    if code in ("AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch"):
+                        raise RuntimeError(
+                            f"AccessDenied when calling PutObject: {exc}"
+                        ) from exc
+                    last_exc = exc
+                except Exception as exc:
+                    last_exc = exc
+                if last_exc is None:
+                    break
+                if not is_retryable_pikpak_upload_error(last_exc) or attempt >= _UPLOAD_STREAM_ATTEMPTS:
+                    raise last_exc
+                delay = 2**attempt
+                logger.warning(
+                    "PikPak S3 upload attempt %s/%s failed (%s); retrying in %ss",
+                    attempt,
+                    _UPLOAD_STREAM_ATTEMPTS,
+                    type(last_exc).__name__,
+                    delay,
+                )
+                time.sleep(delay)
             if on_progress:
                 on_progress(size, size)
 
@@ -651,18 +718,37 @@ class PikPakAdapter:
                 data[str(key)] = str(val)
 
         size = local_path.stat().st_size
-        # httpx multipart: pass data fields + file; wrapper reports bytes as they are read
-        async with httpx.AsyncClient(timeout=None, follow_redirects=True) as http:
-            with _ProgressReader(local_path, on_progress) as body:
-                files = {
-                    "file": (local_path.name, body, "application/octet-stream"),
-                }
-                resp = await http.request(method, url, data=data, files=files)
-                if resp.status_code >= 400:
-                    body_snip = (resp.text or "")[:300]
-                    raise RuntimeError(
-                        f"PikPak FORM upload failed HTTP {resp.status_code}: {body_snip}"
-                    )
+        last_exc: Exception | None = None
+        for attempt in range(1, _UPLOAD_STREAM_ATTEMPTS + 1):
+            try:
+                async with httpx.AsyncClient(timeout=None, follow_redirects=True) as http:
+                    with _ProgressReader(local_path, on_progress) as body:
+                        files = {
+                            "file": (local_path.name, body, "application/octet-stream"),
+                        }
+                        resp = await http.request(method, url, data=data, files=files)
+                        if resp.status_code >= 400:
+                            body_snip = (resp.text or "")[:300]
+                            raise RuntimeError(
+                                f"PikPak FORM upload failed HTTP {resp.status_code}: {body_snip}"
+                            )
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if not is_retryable_pikpak_upload_error(exc) or attempt >= _UPLOAD_STREAM_ATTEMPTS:
+                    raise
+                delay = 2**attempt
+                logger.warning(
+                    "PikPak FORM upload attempt %s/%s failed (%s); retrying in %ss",
+                    attempt,
+                    _UPLOAD_STREAM_ATTEMPTS,
+                    type(exc).__name__,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+        if last_exc:
+            raise last_exc
         if on_progress:
             on_progress(size, size)
 

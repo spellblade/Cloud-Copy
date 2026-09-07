@@ -47,9 +47,9 @@ Work sequence (ease × risk × priority). **Branch** is a plain name (no link); 
 | 4 | [#5](https://github.com/spellblade/Cloud-Copy/issues/5) Folder select | Yes | `feat/folder-select` |
 | 5 | [#4](https://github.com/spellblade/Cloud-Copy/issues/4) Live progress | Yes | `feat/live-progress` |
 | 6 | [#6](https://github.com/spellblade/Cloud-Copy/issues/6) Queue stuck | Yes | `feat/queue-stuck` |
-| 7 | [#16](https://github.com/spellblade/Cloud-Copy/issues/16) Retry skip completed dest | No | — |
-| 8 | [#7](https://github.com/spellblade/Cloud-Copy/issues/7) MEGA timeout | No | — |
-| 9 | [#8](https://github.com/spellblade/Cloud-Copy/issues/8) PikPak SSL | No | — |
+| 7 | [#16](https://github.com/spellblade/Cloud-Copy/issues/16) Retry skip completed dest | Yes | `feat/retry-skip` |
+| 8 | [#7](https://github.com/spellblade/Cloud-Copy/issues/7) MEGA timeout | Yes | `feat/mega-timeout` |
+| 9 | [#8](https://github.com/spellblade/Cloud-Copy/issues/8) PikPak SSL | Yes | `feat/pikpak-ssl` |
 | 10 | [#11](https://github.com/spellblade/Cloud-Copy/issues/11) New/Delete folder | No | — |
 | 11 | [#12](https://github.com/spellblade/Cloud-Copy/issues/12) Parallel + abort | No | — |
 

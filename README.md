@@ -1,13 +1,13 @@
 # Cloud Copy — MEGA ↔ PikPak
 
-[![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](VERSION)
 [![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
 Local web app that transfers files between **MEGA** and **PikPak** in both directions.
 
 **Transfer model:** this is a **local relay**, not pure server-side cloud-to-cloud. Each file is downloaded from the source cloud to your PC (temp folder), then uploaded to the destination. It uses your bandwidth and disk. True MEGA↔PikPak server-side copy is not offered by either provider for private accounts.
 
-## Features (v1.0.4)
+## Features (v1.0.5)
 
 - Connect MEGA and PikPak accounts
 - Dual-pane file browser (source / destination)
@@ -15,6 +15,7 @@ Local web app that transfers files between **MEGA** and **PikPak** in both direc
 - Check a folder in the source pane to copy it (and its contents); double-click a folder to open it
 - Live per-file download/upload progress (bar and byte counts, including MEGA upload chunks)
 - Cancel and retry jobs; the next queued transfer starts after cancel or fail
+- Retry skips dest files that already match; MEGA download retries timeouts; PikPak upload tries FORM first and retries SSL EOF
 - Session restore from local credential store (`~/.cloud-copy/`)
 
 ## Requirements

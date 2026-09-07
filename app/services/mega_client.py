@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,32 @@ from app.services.totp_util import get_fresh_totp_code, normalize_totp_secret
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[int, int], None]
+
+# File GET to gfs*.userstorage.mega.co.nz (often advertised as http:// :80)
+_STREAM_TIMEOUT = (30, 300)  # connect, read — large files need more than 120s
+_DOWNLOAD_ATTEMPTS = 3
+
+
+def prefer_https_storage_url(url: str) -> str:
+    """Use HTTPS for MEGA storage hosts so we are not stuck on plaintext port 80."""
+    if url.startswith("http://"):
+        return "https://" + url[len("http://") :]
+    return url
+
+
+def is_retryable_mega_download_error(exc: BaseException) -> bool:
+    """Timeouts and dropped connections — not MAC/HTTP 4xx."""
+    import requests
+
+    return isinstance(
+        exc,
+        (
+            requests.exceptions.ReadTimeout,
+            requests.exceptions.ConnectTimeout,
+            requests.exceptions.ConnectionError,
+            TimeoutError,
+        ),
+    )
 
 
 def _map_mega_error(err: Any, *, context: str = "MEGA request") -> str:
@@ -433,7 +460,7 @@ class MegaAdapter:
                 "Try again later or re-login."
             )
 
-        file_url = file_data["g"]
+        file_url = prefer_https_storage_url(str(file_data["g"]))
         file_size = int(file_data.get("s") or file_node.get("s") or 0)
         k = file_node["k"]
         iv = file_node["iv"]
@@ -441,77 +468,90 @@ class MegaAdapter:
 
         final_path = dest_dir / file_name
         partial_path = dest_dir / f".{file_name}.partial"
-        if partial_path.exists():
-            try:
-                partial_path.unlink()
-            except OSError:
-                pass
+        last_exc: Exception | None = None
 
-        k_str = a32_to_str(k)
-        counter = Counter.new(
-            128, initial_value=((iv[0] << 32) + iv[1]) << 64
-        )
-        aes = AES.new(k_str, AES.MODE_CTR, counter=counter)
-
-        mac_str = b"\0" * 16
-        mac_encryptor = AES.new(k_str, AES.MODE_CBC, mac_str)
-        iv_str = a32_to_str([iv[0], iv[1], iv[0], iv[1]])
-
-        written = 0
-        try:
-            with requests.get(file_url, stream=True, timeout=120) as resp:
-                resp.raise_for_status()
-                raw = resp.raw
-                with partial_path.open("wb") as out:
-                    for _chunk_start, chunk_size in get_chunks(file_size):
-                        chunk = raw.read(chunk_size)
-                        if not chunk:
-                            break
-                        chunk = aes.decrypt(chunk)
-                        out.write(chunk)
-                        written += len(chunk)
-
-                        encryptor = AES.new(k_str, AES.MODE_CBC, iv_str)
-                        i = 0
-                        for i in range(0, len(chunk) - 16, 16):
-                            block = chunk[i : i + 16]
-                            encryptor.encrypt(block)
-
-                        if file_size > 16:
-                            i += 16
-                        else:
-                            i = 0
-
-                        block = chunk[i : i + 16]
-                        if len(block) % 16:
-                            block += b"\0" * (16 - (len(block) % 16))
-                        mac_str = mac_encryptor.encrypt(encryptor.encrypt(block))
-
-                        if on_progress and file_size:
-                            on_progress(written, file_size)
-
-            file_mac = str_to_a32(mac_str)
-            if (file_mac[0] ^ file_mac[1], file_mac[2] ^ file_mac[3]) != meta_mac:
-                raise ValueError("MEGA download integrity check failed (MAC mismatch)")
-
-            # Handle closed above; safe to rename on Windows
-            if final_path.exists():
-                final_path.unlink()
-            partial_path.replace(final_path)
-        except Exception:
-            try:
-                if partial_path.exists():
+        for attempt in range(1, _DOWNLOAD_ATTEMPTS + 1):
+            if partial_path.exists():
+                try:
                     partial_path.unlink()
-            except OSError:
-                pass
-            raise
-        finally:
-            # Drop any lingering megapy_* leftovers are not used here
-            pass
+                except OSError:
+                    pass
 
-        if on_progress and file_size:
-            on_progress(file_size, file_size)
-        return final_path
+            k_str = a32_to_str(k)
+            counter = Counter.new(
+                128, initial_value=((iv[0] << 32) + iv[1]) << 64
+            )
+            aes = AES.new(k_str, AES.MODE_CTR, counter=counter)
+            mac_str = b"\0" * 16
+            mac_encryptor = AES.new(k_str, AES.MODE_CBC, mac_str)
+            iv_str = a32_to_str([iv[0], iv[1], iv[0], iv[1]])
+            written = 0
+
+            try:
+                with requests.get(
+                    file_url, stream=True, timeout=_STREAM_TIMEOUT
+                ) as resp:
+                    resp.raise_for_status()
+                    raw = resp.raw
+                    with partial_path.open("wb") as out:
+                        for _chunk_start, chunk_size in get_chunks(file_size):
+                            chunk = raw.read(chunk_size)
+                            if not chunk:
+                                break
+                            chunk = aes.decrypt(chunk)
+                            out.write(chunk)
+                            written += len(chunk)
+
+                            encryptor = AES.new(k_str, AES.MODE_CBC, iv_str)
+                            i = 0
+                            for i in range(0, len(chunk) - 16, 16):
+                                block = chunk[i : i + 16]
+                                encryptor.encrypt(block)
+
+                            if file_size > 16:
+                                i += 16
+                            else:
+                                i = 0
+
+                            block = chunk[i : i + 16]
+                            if len(block) % 16:
+                                block += b"\0" * (16 - (len(block) % 16))
+                            mac_str = mac_encryptor.encrypt(encryptor.encrypt(block))
+
+                            if on_progress and file_size:
+                                on_progress(written, file_size)
+
+                file_mac = str_to_a32(mac_str)
+                if (file_mac[0] ^ file_mac[1], file_mac[2] ^ file_mac[3]) != meta_mac:
+                    raise ValueError("MEGA download integrity check failed (MAC mismatch)")
+
+                if final_path.exists():
+                    final_path.unlink()
+                partial_path.replace(final_path)
+                if on_progress and file_size:
+                    on_progress(file_size, file_size)
+                return final_path
+            except Exception as exc:
+                last_exc = exc
+                try:
+                    if partial_path.exists():
+                        partial_path.unlink()
+                except OSError:
+                    pass
+                if not is_retryable_mega_download_error(exc) or attempt >= _DOWNLOAD_ATTEMPTS:
+                    raise
+                delay = 2 ** attempt
+                logger.warning(
+                    "MEGA download attempt %s/%s failed (%s); retrying in %ss url=%s",
+                    attempt,
+                    _DOWNLOAD_ATTEMPTS,
+                    type(exc).__name__,
+                    delay,
+                    file_url,
+                )
+                time.sleep(delay)
+
+        raise RuntimeError(str(last_exc) if last_exc else "MEGA download failed")
 
     async def upload_from_path(
         self,

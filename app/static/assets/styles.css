@@ -379,6 +379,14 @@ button.danger {
   border-bottom: 1px solid var(--border);
 }
 
+.pane-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
 .pane-header h2 {
   margin: 0;
   font-size: 1rem;
@@ -390,8 +398,9 @@ button.danger {
   line-height: 1.35;
 }
 
-#leftPane .file-table tbody tr {
-  cursor: pointer; /* whole source row is selectable */
+#leftPane .file-table tbody tr,
+#rightPane .file-table tbody tr {
+  cursor: pointer; /* rows are selectable for transfer (source) or delete */
 }
 
 .crumbs {

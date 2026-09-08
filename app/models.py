@@ -60,6 +60,13 @@ class FileListResponse(BaseModel):
     items: list[FileNode]
 
 
+class FileCreateRequest(BaseModel):
+    # Pane New folder: create under ``parent_id`` (null = root).
+
+    parent_id: str | None = None
+    name: str
+
+
 class TransferStatus(str, Enum):
     # Lifecycle of a transfer job (queue → running → terminal).
 

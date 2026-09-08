@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.config import settings
-from app.models import MessageResponse
 from app.services.transfer_service import transfer_service
 
 router = APIRouter(prefix="/api/system", tags=["system"])

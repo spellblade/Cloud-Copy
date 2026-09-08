@@ -303,6 +303,14 @@ class PikPakAdapter:
             return await self._ensure_final_name(node.id, name, parent)
         return node
 
+    async def delete_folder(self, folder_id: str) -> None:
+        """Move a PikPak folder (and its contents) to trash. Not permanent."""
+        client = self._require()
+        try:
+            await client.delete_to_trash([folder_id])
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"PikPak delete failed: {exc}") from exc
+
     async def _names_in_folder(self, parent_id: str | None) -> set[str]:
         # Set of existing names in a folder — used to avoid overwrites and pick ``(1)``.
         items = await self.list_folder(parent_id or None)

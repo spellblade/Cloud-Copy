@@ -37,7 +37,7 @@ scripts/               install/run for Windows and Linux
 ```
 Browser UI  ←HTTP/WS→  FastAPI
                          ├── /api/auth
-                         ├── /api/files
+                         ├── /api/files (list, mkdir, trash-delete)
                          ├── /api/transfers + /ws/transfers
                          └── TransferService
                                ├── MegaAdapter

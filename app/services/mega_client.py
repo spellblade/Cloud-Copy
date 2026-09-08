@@ -408,6 +408,19 @@ class MegaAdapter:
         await self._refresh_files_cache()
         return await self.get_node(folder_id)
 
+    async def delete_folder(self, folder_id: str) -> None:
+        """Move a MEGA folder (and its contents) to the Rubbish Bin. Not permanent."""
+        m = self._require()
+
+        def _delete() -> None:
+            try:
+                m.delete(folder_id)
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(_map_mega_error(exc, context="MEGA delete")) from exc
+
+        await asyncio.to_thread(_delete)
+        await self._refresh_files_cache()
+
     async def download_to_path(
         self,
         file_id: str,

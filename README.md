@@ -13,6 +13,7 @@ Local web app that transfers files between **MEGA** and **PikPak** in both direc
 - Dual-pane file browser (source / destination)
 - Transfer files and folders either direction
 - Check a folder in the source pane to copy it (and its contents); double-click a folder to open it
+- New folder and Delete folder in both panes (delete confirms and uses trash)
 - Live per-file download/upload progress (bar and byte counts, including MEGA upload chunks)
 - Cancel and retry jobs; the next queued transfer starts after cancel or fail
 - Retry skips dest files that already match; MEGA download retries timeouts; PikPak upload tries FORM first and retries SSL EOF
@@ -103,8 +104,9 @@ Open **http://127.0.0.1:8000** in your browser.
 2. Choose direction (**MEGA → PikPak** or reverse).
 3. Browse the source pane; check files or folders to transfer (a folder copies its contents). Double-click a folder to open it.
 4. Navigate the destination pane to the target folder.
-5. Click **Transfer selected**.
-6. Watch progress in the **Transfers** section; cancel or retry as needed.
+5. **New folder** / **Delete folder** are in each pane. Delete asks for confirmation and sends the folder to MEGA Rubbish / PikPak Trash.
+6. Click **Transfer selected**.
+7. Watch progress in the **Transfers** section; cancel or retry as needed.
 
 ### MEGA with 2FA (recommended: TOTP secret)
 
@@ -165,6 +167,8 @@ Each job uses a subfolder under `temp` (UUID). Successful jobs are cleaned autom
 | POST | `/api/auth/pikpak` | Login PikPak |
 | DELETE | `/api/auth/{provider}` | Logout |
 | GET | `/api/files/{provider}?parent=` | List folder |
+| POST | `/api/files/{provider}` | Create folder `{parent_id,name}` |
+| DELETE | `/api/files/{provider}/{id}` | Move folder to trash |
 | POST | `/api/transfers` | Start transfer |
 | GET | `/api/transfers` | List jobs |
 | POST | `/api/transfers/{id}/cancel` | Cancel |

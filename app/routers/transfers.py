@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Set
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from app.models import (
-    MessageResponse,
     TransferCreateRequest,
     TransferJob,
     TransferListResponse,
@@ -18,7 +16,7 @@ from app.services.transfer_service import transfer_service
 
 router = APIRouter(tags=["transfers"])
 
-_ws_clients: Set[WebSocket] = set()
+_ws_clients: set[WebSocket] = set()
 
 
 async def _broadcast_job(job: TransferJob) -> None:
@@ -98,7 +96,7 @@ async def transfers_ws(websocket: WebSocket) -> None:
             # keep alive; client may send pings
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=30)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await websocket.send_text(json.dumps({"type": "ping"}))
     except WebSocketDisconnect:
         pass

@@ -5,7 +5,7 @@
     direction: "mega_to_pikpak",
     auth: { mega: { connected: false }, pikpak: { connected: false } },
     left: { provider: "mega", parent: null, stack: [{ id: null, name: "Root" }], items: [], selected: new Set() },
-    right: { provider: "pikpak", parent: null, stack: [{ id: null, name: "Root" }], items: [] },
+    right: { provider: "pikpak", parent: null, stack: [{ id: null, name: "Root" }], items: [], selected: new Set() },
     jobs: [],
   };
 
@@ -76,7 +76,9 @@
     state.left.selected = new Set();
     state.right.parent = null;
     state.right.stack = [{ id: null, name: "Root" }];
+    state.right.selected = new Set();
     updateTransferButton();
+    updateFolderActionButtons();
     loadPane("left");
     loadPane("right");
   }
@@ -112,6 +114,7 @@
       }
     }
     updateTransferButton();
+    updateFolderActionButtons();
   }
 
   async function refreshAuth() {
@@ -147,7 +150,7 @@
   }
 
   function renderPane(side) {
-    // Draw the file table. Left pane has checkboxes; folders enter on double-click.
+    // Draw the file table. Left pane has checkboxes; dest folders select on click.
     const pane = state[side];
     const body = $(`#${side}Body`);
     const empty = $(`#${side}Empty`);
@@ -157,19 +160,22 @@
     if (!state.auth[pane.provider]?.connected) {
       empty.textContent = `Connect ${pane.provider.toUpperCase()} to browse files.`;
       empty.classList.remove("hidden");
+      updateFolderActionButtons();
       return;
     }
 
     if (!pane.items.length) {
       empty.textContent = "This folder is empty.";
       empty.classList.remove("hidden");
+      updateTransferButton();
+      updateFolderActionButtons();
       return;
     }
     empty.classList.add("hidden");
 
     for (const item of pane.items) {
       const tr = document.createElement("tr");
-      if (side === "left" && pane.selected.has(item.id)) tr.classList.add("selected");
+      if (pane.selected.has(item.id)) tr.classList.add("selected");
 
       const tdCheck = document.createElement("td");
       let cb = null;
@@ -195,17 +201,20 @@
       const nameEl = wrap.querySelector(".name-text");
       nameEl.textContent = item.name;
       nameEl.title = item.is_dir
-        ? `${item.name} — ${side === "left" ? "click to select, double-click to open" : "double-click to open"}`
+        ? `${item.name} — click to select, double-click to open`
         : item.name;
       if (item.is_dir) {
         let clickTimer;
         wrap.addEventListener("click", (e) => {
           // Delay so a double-click can cancel this and open the folder instead.
-          if (side !== "left") return;
           if (e.detail !== 1) return;
           clearTimeout(clickTimer);
           clickTimer = setTimeout(() => {
-            setLeftSelected(item.id, !state.left.selected.has(item.id), tr, cb);
+            if (side === "left") {
+              setLeftSelected(item.id, !state.left.selected.has(item.id), tr, cb);
+            } else {
+              setRightFolderSelected(item.id);
+            }
           }, 280);
         });
         wrap.addEventListener("dblclick", () => {
@@ -228,14 +237,15 @@
       body.appendChild(tr);
     }
     updateTransferButton();
+    updateFolderActionButtons();
   }
 
   function enterFolder(side, item) {
-    // Navigate into a folder; left-pane selection is cleared.
+    // Navigate into a folder; selection in this pane is cleared.
     const pane = state[side];
     pane.parent = item.id;
     pane.stack.push({ id: item.id, name: item.name });
-    if (side === "left") pane.selected = new Set();
+    pane.selected = new Set();
     loadPane(side);
   }
 
@@ -260,6 +270,7 @@
       empty.textContent = err.message;
       empty.classList.remove("hidden");
       toast(err.message, "error");
+      updateFolderActionButtons();
     }
   }
 
@@ -278,12 +289,45 @@
   }
 
   function setLeftSelected(itemId, on, tr, cb) {
-    // Toggle one source item (file or folder) and refresh the Transfer button.
+    // Toggle one source item (file or folder) and refresh Transfer / Delete folder.
     if (on) state.left.selected.add(itemId);
     else state.left.selected.delete(itemId);
     if (tr) tr.classList.toggle("selected", on);
     if (cb) cb.checked = on;
     updateTransferButton();
+    updateFolderActionButtons();
+  }
+
+  function setRightFolderSelected(itemId) {
+    // Destination: one folder at a time for Delete folder (toggle if already selected).
+    if (state.right.selected.has(itemId)) {
+      state.right.selected.delete(itemId);
+    } else {
+      state.right.selected = new Set([itemId]);
+    }
+    renderPane("right");
+  }
+
+  function selectedFolders(side) {
+    // Folders currently selected in this pane (files are ignored for delete).
+    const pane = state[side];
+    return pane.items.filter((i) => i.is_dir && pane.selected.has(i.id));
+  }
+
+  function providerLabel(provider) {
+    return provider === "mega" ? "MEGA" : "PikPak";
+  }
+
+  function updateFolderActionButtons() {
+    // New folder when connected; Delete folder when a folder is selected.
+    for (const side of ["left", "right"]) {
+      const pane = state[side];
+      const connected = !!state.auth[pane.provider]?.connected;
+      const mkdirBtn = $(`[data-mkdir="${side}"]`);
+      const rmdirBtn = $(`[data-rmdir="${side}"]`);
+      if (mkdirBtn) mkdirBtn.disabled = !connected;
+      if (rmdirBtn) rmdirBtn.disabled = !connected || selectedFolders(side).length === 0;
+    }
   }
 
   // --- Transfer jobs ---
@@ -572,8 +616,67 @@
       pane.stack.pop();
       const top = pane.stack[pane.stack.length - 1];
       pane.parent = top.id;
-      if (side === "left") pane.selected = new Set();
+      pane.selected = new Set();
       loadPane(side);
+    });
+  });
+
+  $$("[data-mkdir]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const side = btn.dataset.mkdir;
+      const pane = state[side];
+      if (!state.auth[pane.provider]?.connected) return;
+      const raw = window.prompt("Folder name");
+      if (raw == null) return;
+      const name = raw.trim();
+      if (!name) return;
+      try {
+        await api(`/api/files/${pane.provider}`, {
+          method: "POST",
+          body: JSON.stringify({ parent_id: pane.parent, name }),
+        });
+        toast(`Created folder “${name}”`);
+        await loadPane(side);
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
+
+  $$("[data-rmdir]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const side = btn.dataset.rmdir;
+      const pane = state[side];
+      const folders = selectedFolders(side);
+      if (!folders.length) {
+        toast("Select a folder to delete.");
+        return;
+      }
+      const cloud = providerLabel(pane.provider);
+      const ok =
+        folders.length === 1
+          ? window.confirm(`Move “${folders[0].name}” and its contents to ${cloud} trash?`)
+          : window.confirm(
+              `Move ${folders.length} folders and their contents to ${cloud} trash?`
+            );
+      if (!ok) return;
+      try {
+        for (const folder of folders) {
+          await api(`/api/files/${pane.provider}/${encodeURIComponent(folder.id)}`, {
+            method: "DELETE",
+          });
+          pane.selected.delete(folder.id);
+        }
+        toast(
+          folders.length === 1
+            ? `Moved “${folders[0].name}” to trash`
+            : `Moved ${folders.length} folders to trash`
+        );
+        await loadPane(side);
+      } catch (err) {
+        toast(err.message, "error");
+        await loadPane(side);
+      }
     });
   });
 

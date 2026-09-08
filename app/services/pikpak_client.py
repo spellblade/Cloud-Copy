@@ -303,11 +303,11 @@ class PikPakAdapter:
             return await self._ensure_final_name(node.id, name, parent)
         return node
 
-    async def delete_folder(self, folder_id: str) -> None:
-        """Move a PikPak folder (and its contents) to trash. Not permanent."""
+    async def delete_folder(self, item_id: str) -> None:
+        """Move a PikPak file or folder (folders include contents) to trash. Not permanent."""
         client = self._require()
         try:
-            await client.delete_to_trash([folder_id])
+            await client.delete_to_trash([item_id])
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"PikPak delete failed: {exc}") from exc
 

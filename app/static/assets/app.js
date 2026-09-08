@@ -202,7 +202,7 @@
       nameEl.textContent = item.name;
       nameEl.title = item.is_dir
         ? `${item.name} — click to select, double-click to open`
-        : item.name;
+        : `${item.name} — click to select`;
       if (item.is_dir) {
         let clickTimer;
         wrap.addEventListener("click", (e) => {
@@ -213,7 +213,7 @@
             if (side === "left") {
               setLeftSelected(item.id, !state.left.selected.has(item.id), tr, cb);
             } else {
-              setRightFolderSelected(item.id);
+              setRightSelected(item.id);
             }
           }, 280);
         });
@@ -224,6 +224,10 @@
       } else if (side === "left") {
         wrap.addEventListener("click", () => {
           setLeftSelected(item.id, !state.left.selected.has(item.id), tr, cb);
+        });
+      } else {
+        wrap.addEventListener("click", () => {
+          setRightSelected(item.id);
         });
       }
       tdName.appendChild(wrap);
@@ -289,7 +293,7 @@
   }
 
   function setLeftSelected(itemId, on, tr, cb) {
-    // Toggle one source item (file or folder) and refresh Transfer / Delete folder.
+    // Toggle one source item (file or folder) and refresh Transfer / Delete.
     if (on) state.left.selected.add(itemId);
     else state.left.selected.delete(itemId);
     if (tr) tr.classList.toggle("selected", on);
@@ -298,8 +302,8 @@
     updateFolderActionButtons();
   }
 
-  function setRightFolderSelected(itemId) {
-    // Destination: one folder at a time for Delete folder (toggle if already selected).
+  function setRightSelected(itemId) {
+    // Destination: one file or folder at a time for Delete (toggle if already selected).
     if (state.right.selected.has(itemId)) {
       state.right.selected.delete(itemId);
     } else {
@@ -308,25 +312,43 @@
     renderPane("right");
   }
 
-  function selectedFolders(side) {
-    // Folders currently selected in this pane (files are ignored for delete).
+  function selectedItems(side) {
+    // Files and folders currently selected in this pane (for Delete).
     const pane = state[side];
-    return pane.items.filter((i) => i.is_dir && pane.selected.has(i.id));
+    return pane.items.filter((i) => pane.selected.has(i.id));
   }
 
   function providerLabel(provider) {
     return provider === "mega" ? "MEGA" : "PikPak";
   }
 
+  function confirmTrash(items, provider) {
+    // Confirm copy: folders mention contents; files do not.
+    const cloud = providerLabel(provider);
+    if (items.length === 1) {
+      const item = items[0];
+      return item.is_dir
+        ? window.confirm(`Move “${item.name}” and its contents to ${cloud} trash?`)
+        : window.confirm(`Move “${item.name}” to ${cloud} trash?`);
+    }
+    const nFolders = items.filter((i) => i.is_dir).length;
+    if (nFolders > 0) {
+      return window.confirm(
+        `Move ${items.length} items to ${cloud} trash? Folders include their contents.`
+      );
+    }
+    return window.confirm(`Move ${items.length} files to ${cloud} trash?`);
+  }
+
   function updateFolderActionButtons() {
-    // New folder when connected; Delete folder when a folder is selected.
+    // New folder when connected; Delete when any item is selected.
     for (const side of ["left", "right"]) {
       const pane = state[side];
       const connected = !!state.auth[pane.provider]?.connected;
       const mkdirBtn = $(`[data-mkdir="${side}"]`);
       const rmdirBtn = $(`[data-rmdir="${side}"]`);
       if (mkdirBtn) mkdirBtn.disabled = !connected;
-      if (rmdirBtn) rmdirBtn.disabled = !connected || selectedFolders(side).length === 0;
+      if (rmdirBtn) rmdirBtn.disabled = !connected || selectedItems(side).length === 0;
     }
   }
 
@@ -647,30 +669,23 @@
     btn.addEventListener("click", async () => {
       const side = btn.dataset.rmdir;
       const pane = state[side];
-      const folders = selectedFolders(side);
-      if (!folders.length) {
-        toast("Select a folder to delete.");
+      const items = selectedItems(side);
+      if (!items.length) {
+        toast("Select a file or folder to delete.");
         return;
       }
-      const cloud = providerLabel(pane.provider);
-      const ok =
-        folders.length === 1
-          ? window.confirm(`Move “${folders[0].name}” and its contents to ${cloud} trash?`)
-          : window.confirm(
-              `Move ${folders.length} folders and their contents to ${cloud} trash?`
-            );
-      if (!ok) return;
+      if (!confirmTrash(items, pane.provider)) return;
       try {
-        for (const folder of folders) {
-          await api(`/api/files/${pane.provider}/${encodeURIComponent(folder.id)}`, {
+        for (const item of items) {
+          await api(`/api/files/${pane.provider}/${encodeURIComponent(item.id)}`, {
             method: "DELETE",
           });
-          pane.selected.delete(folder.id);
+          pane.selected.delete(item.id);
         }
         toast(
-          folders.length === 1
-            ? `Moved “${folders[0].name}” to trash`
-            : `Moved ${folders.length} folders to trash`
+          items.length === 1
+            ? `Moved “${items[0].name}” to trash`
+            : `Moved ${items.length} items to trash`
         );
         await loadPane(side);
       } catch (err) {

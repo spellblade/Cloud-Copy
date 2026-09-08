@@ -71,8 +71,8 @@ async def create_folder(provider: Provider, body: FileCreateRequest) -> FileNode
 
 
 @router.delete("/{provider}/{item_id}", response_model=MessageResponse)
-async def delete_folder(provider: Provider, item_id: str) -> MessageResponse:
-    # Move a folder (and its contents) to MEGA/PikPak trash. Files are rejected.
+async def delete_item(provider: Provider, item_id: str) -> MessageResponse:
+    # Move a file or folder (folders include contents) to MEGA/PikPak trash.
     adapter = _require_adapter(provider)
     try:
         node = await adapter.get_node(item_id)
@@ -80,8 +80,6 @@ async def delete_folder(provider: Provider, item_id: str) -> MessageResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if not node.is_dir:
-        raise HTTPException(status_code=400, detail="Only folders can be deleted from the pane")
     try:
         await adapter.delete_folder(item_id)
     except FileNotFoundError as exc:

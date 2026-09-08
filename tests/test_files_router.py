@@ -77,16 +77,16 @@ def test_delete_unauthorized(client, monkeypatch):
     assert res.status_code == 401
 
 
-def test_delete_rejects_file(client, monkeypatch):
+def test_delete_file_calls_trash(client, monkeypatch):
     monkeypatch.setattr(mega_adapter, "is_authenticated", lambda: True)
     monkeypatch.setattr(mega_adapter, "get_node", AsyncMock(return_value=_file("f1", "a.txt")))
     delete_folder = AsyncMock()
     monkeypatch.setattr(mega_adapter, "delete_folder", delete_folder)
 
     res = client.delete("/api/files/mega/f1")
-    assert res.status_code == 400
-    assert "folders" in res.json()["detail"]
-    delete_folder.assert_not_called()
+    assert res.status_code == 200
+    assert res.json()["ok"] is True
+    delete_folder.assert_awaited_once_with("f1")
 
 
 def test_delete_folder_calls_trash(client, monkeypatch):

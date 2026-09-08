@@ -7,14 +7,14 @@
 5. Click **Transfer selected**.
 6. Watch **Transfers** — the bar and byte counts should move while a file downloads or uploads. Cancel or retry as needed.
 
-## New folder and Delete folder
+## New folder and Delete
 
-Both panes have **New folder** and **Delete folder**.
+Both panes have **New folder** and **Delete**.
 
 - **New folder** creates a folder in the directory that pane is showing. A name that is already used there is rejected.
-- **Delete folder** (source): uses **checked folders** (checked files are ignored).
-- **Delete folder** (destination): **click** a folder to select it, then delete. Double-click still opens the folder.
-- Confirm before delete. Cloud Copy sends the folder (and its contents) to **MEGA Rubbish** / **PikPak Trash**, not a permanent delete. Restore or empty trash in the MEGA or PikPak app.
+- **Delete** (source): uses **checked** files and folders.
+- **Delete** (destination): **click** a file or folder to select it, then delete. Double-click a folder still opens it.
+- Confirm before delete. Cloud Copy sends items to **MEGA Rubbish** / **PikPak Trash**, not a permanent delete. Deleting a folder includes its contents. Restore or empty trash in the MEGA or PikPak app.
 
 ## MEGA 2FA
 

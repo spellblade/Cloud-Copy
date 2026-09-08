@@ -398,8 +398,9 @@ button.danger {
   line-height: 1.35;
 }
 
-#leftPane .file-table tbody tr {
-  cursor: pointer; /* whole source row is selectable */
+#leftPane .file-table tbody tr,
+#rightPane .file-table tbody tr {
+  cursor: pointer; /* rows are selectable for transfer (source) or delete */
 }
 
 .crumbs {

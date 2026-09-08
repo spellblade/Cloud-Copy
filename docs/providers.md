@@ -12,7 +12,7 @@ Cloud Copy currently implements **two** providers. Template 02’s GDrive/Dropbo
 - Login: password + optional TOTP secret or one-shot code.
 - Download: custom path (avoids `mega.py` `NamedTemporaryFile` + `shutil.move` on Windows, WinError 32).
 - Quota: free accounts hit transfer limits (`EOVERQUOTA`).
-- Pane delete: `mega.py` `delete(node_id)` moves the folder to Rubbish (type 4). Not `destroy`.
+- Pane delete: `mega.py` `delete(node_id)` moves a file or folder to Rubbish (type 4). Not `destroy`.
 
 ## PikPak
 

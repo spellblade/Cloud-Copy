@@ -408,13 +408,13 @@ class MegaAdapter:
         await self._refresh_files_cache()
         return await self.get_node(folder_id)
 
-    async def delete_folder(self, folder_id: str) -> None:
-        """Move a MEGA folder (and its contents) to the Rubbish Bin. Not permanent."""
+    async def delete_folder(self, item_id: str) -> None:
+        """Move a MEGA file or folder (folders include contents) to Rubbish. Not permanent."""
         m = self._require()
 
         def _delete() -> None:
             try:
-                m.delete(folder_id)
+                m.delete(item_id)
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError(_map_mega_error(exc, context="MEGA delete")) from exc
 

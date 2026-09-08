@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New folder and Delete folder in both panes; delete confirms and sends the folder to MEGA/PikPak trash (#11)
+- New folder and Delete in both panes; delete confirms and sends selected files or folders to MEGA/PikPak trash (#11)
 
 ### Changed
 

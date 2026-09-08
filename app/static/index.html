@@ -81,10 +81,14 @@
         <header class="pane-header">
           <div>
             <h2 id="leftTitle">Source</h2>
-            <p class="muted small pane-hint" id="leftSelectHint">Check a folder to transfer it. Double-click a folder to open it.</p>
+            <p class="muted small pane-hint" id="leftSelectHint">Check files or folders to transfer or delete. Double-click a folder to open it.</p>
             <nav class="crumbs" id="leftCrumbs"></nav>
           </div>
-          <button type="button" class="ghost small" data-up="left">↑ Up</button>
+          <div class="pane-actions">
+            <button type="button" class="ghost small" data-mkdir="left" disabled>New folder</button>
+            <button type="button" class="ghost small danger" data-rmdir="left" disabled>Delete</button>
+            <button type="button" class="ghost small" data-up="left">↑ Up</button>
+          </div>
         </header>
         <div class="file-table-wrap">
           <table class="file-table">
@@ -105,9 +109,14 @@
         <header class="pane-header">
           <div>
             <h2 id="rightTitle">Destination</h2>
+            <p class="muted small pane-hint" id="rightSelectHint">Click a file or folder to select it for delete. Double-click a folder to open it.</p>
             <nav class="crumbs" id="rightCrumbs"></nav>
           </div>
-          <button type="button" class="ghost small" data-up="right">↑ Up</button>
+          <div class="pane-actions">
+            <button type="button" class="ghost small" data-mkdir="right" disabled>New folder</button>
+            <button type="button" class="ghost small danger" data-rmdir="right" disabled>Delete</button>
+            <button type="button" class="ghost small" data-up="right">↑ Up</button>
+          </div>
         </header>
         <div class="file-table-wrap">
           <table class="file-table">

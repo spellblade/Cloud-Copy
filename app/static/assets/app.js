@@ -154,6 +154,8 @@
     const pane = state[side];
     const body = $(`#${side}Body`);
     const empty = $(`#${side}Empty`);
+    const wrap = $(`#${side}Pane .file-table-wrap`);
+    if (wrap) wrap.classList.remove("is-loading");
     body.innerHTML = "";
     renderCrumbs(side);
 
@@ -257,10 +259,15 @@
     // Fetch listing for the current parent; overlay shows Loading… until render.
     const pane = state[side];
     const empty = $(`#${side}Empty`);
+    const wrap = $(`#${side}Pane .file-table-wrap`);
     if (!state.auth[pane.provider]?.connected) {
       pane.items = [];
       renderPane(side);
       return;
+    }
+    if (wrap) {
+      wrap.scrollTop = 0;
+      wrap.classList.add("is-loading");
     }
     empty.textContent = "Loading…";
     empty.classList.remove("hidden");
@@ -271,6 +278,7 @@
       renderPane(side);
     } catch (err) {
       pane.items = [];
+      if (wrap) wrap.classList.remove("is-loading");
       empty.textContent = err.message;
       empty.classList.remove("hidden");
       toast(err.message, "error");

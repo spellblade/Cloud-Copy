@@ -430,6 +430,11 @@ button.danger {
   max-height: 48vh;
 }
 
+.file-table-wrap.is-loading,
+.file-table-wrap:has(> .empty:not(.hidden)) {
+  overflow-y: hidden !important;
+}
+
 .file-table {
   width: 100%;
   table-layout: fixed; /* leftover width goes to NAME so ellipsis actually runs */
@@ -531,7 +536,7 @@ button.danger {
   margin: 0;
   padding: 16px;
   background: rgba(26, 35, 50, 0.92);
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .file-table-wrap > .empty.hidden {

@@ -70,8 +70,8 @@ Local 1.0.6 review (not GitHub issues). Work sequence is **implementation order*
 |-------|---------|----------|--------|
 | 1 | F-002 Pin `pikpakapi` / `mega.py` in install scripts, README, and CI | No | `feat/dep-pins` |
 | 2 | F-009 Cancel-queued-job test must assert `cancelled` | No | `feat/dep-pins` |
-| 3 | F-014 Adapter `mkdir` reuses an existing folder (direct tests) | No | — |
-| 4 | F-011 Unused `AuthProviderStatus.error` (remove or wire up) | No | — |
+| 3 | F-014 Adapter `mkdir` reuses an existing folder (direct tests) | No | `feat/dep-pins` |
+| 4 | F-011 Unused `AuthProviderStatus.error` (remove or wire up) | No | `feat/dep-pins` |
 | 5 | F-001 + F-006 Credential file `0700`/`0600` (POSIX) and atomic write | No | — |
 | 6 | F-005 Sanitize remote names before local paths and transfer mkdir | No | — |
 | 7 | F-004 (+ F-010, F-012) Cancel vs temp cleanup; dead lock; folder depth | No | — |

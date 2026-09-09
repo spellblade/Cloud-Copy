@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Auth status surfaces the last MEGA/PikPak login or session-restore error on the login card (F-011)
+
 ## [1.0.6] - 2026-09-08
 
 ### Added

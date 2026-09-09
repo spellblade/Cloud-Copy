@@ -134,6 +134,14 @@ body {
   color: var(--accent-2);
 }
 
+.auth-error {
+  color: var(--danger);
+  margin: 8px 0 0;
+  max-width: 22rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+
 .login-form {
   display: grid;
   gap: 8px;

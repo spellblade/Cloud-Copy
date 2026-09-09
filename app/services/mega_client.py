@@ -99,6 +99,7 @@ class MegaAdapter:
         self._username: str | None = None
         self._totp_secret: str | None = None
         self._files_cache: dict[str, Any] = {}
+        self.last_error: str | None = None
 
     @property
     def username(self) -> str | None:
@@ -185,9 +186,11 @@ class MegaAdapter:
         except Exception as exc:  # noqa: BLE001
             self._m = None
             self._username = None
+            self.last_error = str(exc)
             raise RuntimeError(str(exc)) from exc
 
         self._username = username
+        self.last_error = None
         if secret_to_store:
             self._totp_secret = secret_to_store
         if persist:
@@ -290,6 +293,7 @@ class MegaAdapter:
             )
             return True
         except Exception as exc:  # noqa: BLE001
+            self.last_error = str(exc)
             logger.warning(
                 "MEGA session restore failed: %s",
                 exc,
@@ -302,6 +306,7 @@ class MegaAdapter:
         self._username = None
         self._totp_secret = None
         self._files_cache = {}
+        self.last_error = None
         credential_store.delete("mega")
 
     def _require(self) -> Any:

@@ -38,6 +38,7 @@
             </div>
             <button type="submit">Connect</button>
           </form>
+          <p class="muted small auth-error hidden" id="megaAuthError"></p>
           <div class="auth-connected hidden" id="megaConnected">
             <span id="megaUser"></span>
             <span class="muted small hidden" id="megaTotpHint">2FA auto</span>
@@ -54,6 +55,7 @@
             <input type="password" name="password" placeholder="Password" required autocomplete="current-password" />
             <button type="submit">Connect</button>
           </form>
+          <p class="muted small auth-error hidden" id="pikpakAuthError"></p>
           <div class="auth-connected hidden" id="pikpakConnected">
             <span id="pikpakUser"></span>
             <button type="button" class="ghost" data-logout="pikpak">Logout</button>

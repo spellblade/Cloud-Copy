@@ -51,10 +51,32 @@ Work sequence (ease × risk × priority). **Branch** is a plain name (no link); 
 | 8 | [#7](https://github.com/spellblade/Cloud-Copy/issues/7) MEGA timeout | Yes | `feat/mega-timeout` |
 | 9 | [#8](https://github.com/spellblade/Cloud-Copy/issues/8) PikPak SSL | Yes | `feat/pikpak-ssl` |
 | 10 | [#11](https://github.com/spellblade/Cloud-Copy/issues/11) New/Delete folder | Yes | `feat/folder-actions` |
-| 11 | [#12](https://github.com/spellblade/Cloud-Copy/issues/12) Parallel + abort | No | — |
+| 11 | [#12](https://github.com/spellblade/Cloud-Copy/issues/12) Parallel + abort | Parked | — |
 
 ## Notes
 
 - MEGA/PikPak errors need **retries**, not only better error text.
 - Parallelism is last: serial + a working queue + live progress is more valuable first.
 - #16 sits after #6 so retry/queue is trustworthy before skip-on-dest logic.
+- **#12 is parked.** Do not start it until the post-1.0.6 audit work below is done (or explicitly revived).
+
+## After 1.0.6 (audit)
+
+Local 1.0.6 review (not GitHub issues). Work sequence is **implementation order** (ease × risk), not P0 first. **Branch** is a plain name; use `—` until work starts.
+
+**Deferred:** Phase 4 (F-008 clear TOTP without logout, F-007 login rate limit) and [#12](https://github.com/spellblade/Cloud-Copy/issues/12).
+
+| Order | Finding | Resolved | Branch |
+|-------|---------|----------|--------|
+| 1 | F-002 Pin `pikpakapi` / `mega.py` in install scripts, README, and CI | No | `feat/dep-pins` |
+| 2 | F-009 Cancel-queued-job test must assert `cancelled` | No | `feat/dep-pins` |
+| 3 | F-014 Adapter `mkdir` reuses an existing folder (direct tests) | No | — |
+| 4 | F-011 Unused `AuthProviderStatus.error` (remove or wire up) | No | — |
+| 5 | F-001 + F-006 Credential file `0700`/`0600` (POSIX) and atomic write | No | — |
+| 6 | F-005 Sanitize remote names before local paths and transfer mkdir | No | — |
+| 7 | F-004 (+ F-010, F-012) Cancel vs temp cleanup; dead lock; folder depth | No | — |
+| 8 | F-003 MEGA full-tree refresh only when dirty | No | — |
+
+- F-001 and F-006 are one change (`CredentialStore._write`).
+- F-014 must land before F-003.
+- F-004 can reuse or drop the unused `TransferService._lock` (F-010) and add a recursion cap (F-012) in the same change.

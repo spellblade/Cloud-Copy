@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Install scripts, README, and CI pin ``pikpakapi`` and ``mega.py`` to the versions in ``requirements.txt``
+
 ### Fixed
 
 ## [1.0.6] - 2026-09-08

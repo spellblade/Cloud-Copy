@@ -24,16 +24,19 @@ async def test_create_and_list_job():
 
 
 @pytest.mark.asyncio
-async def test_cancel_queued_job():
+async def test_cancel_queued_job(monkeypatch):
+    # Worker must not start, or the job can leave queued before cancel runs.
     svc = TransferService()
-    # Don't start worker processing: cancel while still queued after create
+    monkeypatch.setattr(svc, "ensure_worker", lambda: None)
     job = await svc.create_job(
         direction="pikpak_to_mega",
         source_ids=["x"],
         dest_parent_id=None,
     )
+    assert job.status == TransferStatus.queued
     cancelled = await svc.cancel(job.id)
-    assert cancelled.status in (TransferStatus.cancelled, TransferStatus.queued, TransferStatus.running)
+    assert cancelled.status == TransferStatus.cancelled
+    assert cancelled.message == "Cancelled"
 
 
 def test_failed_stage_label_mega_download():

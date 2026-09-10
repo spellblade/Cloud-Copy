@@ -147,6 +147,7 @@ class PikPakAdapter:
     def __init__(self) -> None:
         self._client: Any = None
         self._username: str | None = None
+        self.last_error: str | None = None
 
     @property
     def username(self) -> str | None:
@@ -172,10 +173,12 @@ class PikPakAdapter:
         except Exception as exc:  # noqa: BLE001
             self._client = None
             self._username = None
-            raise RuntimeError(f"PikPak login failed: {exc}") from exc
+            self.last_error = f"PikPak login failed: {exc}"
+            raise RuntimeError(self.last_error) from exc
 
         self._client = client
         self._username = username
+        self.last_error = None
         if persist:
             credential_store.set(
                 "pikpak",
@@ -206,6 +209,7 @@ class PikPakAdapter:
                 await client.refresh_access_token()
                 self._client = client
                 self._username = saved.get("username")
+                self.last_error = None
                 credential_store.set(
                     "pikpak",
                     {
@@ -227,7 +231,11 @@ class PikPakAdapter:
                     await self.login(saved["username"], saved["password"], persist=True)
                     return True
                 except Exception as exc2:  # noqa: BLE001
+                    self.last_error = str(exc2)
                     logger.warning("PikPak password re-login failed: %s", exc2)
+                    return False
+            self.last_error = str(exc)
+            return False
         return False
 
     async def logout(self) -> None:
@@ -239,6 +247,7 @@ class PikPakAdapter:
                 pass
         self._client = None
         self._username = None
+        self.last_error = None
         credential_store.delete("pikpak")
 
     def _require(self) -> Any:

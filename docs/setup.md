@@ -11,13 +11,13 @@
 
 Do **not** copy a Windows `.venv` into Linux/WSL (or the reverse).
 
-`mega.py` pins an old `tenacity`. Install other packages first, then:
+`mega.py` pins an old `tenacity`. Install other packages first (including `pikpakapi==0.1.11`), then:
 
 ```bash
-pip install mega.py --no-deps
+pip install mega.py==1.0.8 --no-deps
 ```
 
-The install scripts do this.
+Those pins must match `requirements.txt`. The install scripts do this.
 
 ### Windows (PowerShell)
 

@@ -51,8 +51,8 @@ cd D:\cloud-copy
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-pip install fastapi "uvicorn[standard]" httpx pydantic pydantic-settings pikpakapi boto3 python-multipart requests pycryptodome "tenacity>=8.2.0" pyotp
-pip install mega.py --no-deps
+pip install fastapi "uvicorn[standard]" httpx pydantic pydantic-settings pikpakapi==0.1.11 boto3 python-multipart requests pycryptodome "tenacity>=8.2.0" pyotp
+pip install mega.py==1.0.8 --no-deps
 ```
 
 **Run** (with venv activated, or use full path):
@@ -82,8 +82,8 @@ cd ~/projects/cloud-copy
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip
-pip install fastapi "uvicorn[standard]" httpx pydantic pydantic-settings pikpakapi boto3 python-multipart requests pycryptodome "tenacity>=8.2.0" pyotp
-pip install mega.py --no-deps
+pip install fastapi "uvicorn[standard]" httpx pydantic pydantic-settings pikpakapi==0.1.11 boto3 python-multipart requests pycryptodome "tenacity>=8.2.0" pyotp
+pip install mega.py==1.0.8 --no-deps
 ```
 
 **Run** (with venv activated, or use full path):
@@ -213,7 +213,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 Use `python -m pytest` (not bare `pytest`) so the repo root is on `sys.path` and `import app` works. CI does the same.
 
-Note: a plain `pip install -r requirements.txt` may fail resolving `mega.py` vs `tenacity`. Prefer the install scripts or the two-step install (deps, then `mega.py --no-deps`).
+Note: a plain `pip install -r requirements.txt` may fail resolving `mega.py` vs `tenacity`. Prefer the install scripts or the two-step install (deps including `pikpakapi==0.1.11`, then `mega.py==1.0.8 --no-deps`). Those pins must match `requirements.txt`.
 
 ## Contributing
 

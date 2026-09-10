@@ -11,7 +11,11 @@ The server binds to **127.0.0.1** by default. Do not expose it to the network wi
 | `~/.cloud-copy/credentials.json` | MEGA email/password, optional TOTP secret; PikPak tokens |
 | `~/.cloud-copy/temp/` | File contents in transit (plaintext after MEGA decrypt) |
 
-The documentation template recommends OS **keyring** and no plaintext secrets. This app **does not** use keyring yet. Protect `~/.cloud-copy/` on shared machines. Logout deletes stored provider credentials.
+The documentation template recommends OS **keyring** and no plaintext secrets. This app **does not** use keyring yet. Credentials stay in that JSON file.
+
+On **POSIX** (Linux/macOS), Cloud Copy creates `~/.cloud-copy/` as `0700` and `credentials.json` as `0600`, and writes the file atomically (temp file + replace). Existing installs are chmod'd on the next start.
+
+On **Windows**, `os.chmod` does not keep other local accounts out of the file. Protect the profile directory on shared machines. Logout deletes stored provider credentials.
 
 ## Transfers
 

@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Any, Optional
 
 from app.config import settings
+
+
+def _chmod(path: Path, mode: int) -> None:
+    # Restrict POSIX modes. On Windows this only toggles the read-only bit; skip.
+    if os.name == "nt":
+        return
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
 
 
 class CredentialStore:
@@ -17,6 +28,9 @@ class CredentialStore:
         self.path = path or settings.credentials_path()
         self._lock = threading.Lock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        _chmod(self.path.parent, 0o700)
+        if self.path.exists():
+            _chmod(self.path, 0o600)
 
     def _read(self) -> dict[str, Any]:
         # Load the JSON file; missing or corrupt files count as empty.
@@ -28,8 +42,22 @@ class CredentialStore:
             return {}
 
     def _write(self, data: dict[str, Any]) -> None:
-        # Overwrite the file; caller holds ``_lock``.
-        self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        # Atomic replace; POSIX file mode 0600 from create. Caller holds ``_lock``.
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        payload = json.dumps(data, indent=2)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        fd = os.open(tmp, flags, 0o600)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                fd = -1
+                handle.write(payload)
+        except Exception:
+            if fd >= 0:
+                os.close(fd)
+            raise
+        _chmod(tmp, 0o600)
+        os.replace(tmp, self.path)
+        _chmod(self.path, 0o600)
 
     def get(self, provider: str) -> Optional[dict[str, Any]]:
         # Return the saved payload for ``mega`` or ``pikpak``, or None.

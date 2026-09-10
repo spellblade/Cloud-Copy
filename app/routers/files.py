@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.models import FileCreateRequest, FileListResponse, FileNode, MessageResponse, Provider
 from app.services.mega_client import mega_adapter
+from app.services.naming import require_folder_name
 from app.services.pikpak_client import pikpak_adapter
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -29,13 +30,11 @@ def _require_adapter(provider: Provider):
 
 
 def _folder_name(name: str) -> str:
-    # Strip; reject empty names and path separators.
-    cleaned = (name or "").strip()
-    if not cleaned:
-        raise HTTPException(status_code=400, detail="Folder name is required")
-    if "/" in cleaned or "\\" in cleaned:
-        raise HTTPException(status_code=400, detail="Folder name cannot contain /")
-    return cleaned
+    # Same rules as transfer mkdir; HTTP 400 for the New folder form.
+    try:
+        return require_folder_name(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{provider}", response_model=FileListResponse)

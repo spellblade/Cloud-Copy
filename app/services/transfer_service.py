@@ -14,6 +14,7 @@ from typing import Any
 from app.config import settings
 from app.models import Direction, TransferJob, TransferStage, TransferStatus
 from app.services.mega_client import mega_adapter
+from app.services.naming import require_folder_name
 from app.services.pikpak_client import pikpak_adapter
 
 logger = logging.getLogger(__name__)
@@ -432,6 +433,10 @@ class TransferService:
     # Create the dest folder, list source children, and recurse files/subfolders.
         if self._cancelled(job.id):
             return
+        try:
+            folder_name = require_folder_name(folder_name)
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
         job.stage = TransferStage.mkdir
         new_folder = await self._await_step(
             job, dst.mkdir(dest_parent_id, folder_name)

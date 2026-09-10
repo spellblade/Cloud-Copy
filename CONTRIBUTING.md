@@ -27,7 +27,7 @@ python -m pytest
 
 Use `python -m pytest` so `app` is importable (CI uses the same command).
 
-Install `mega.py` with `--no-deps` after other packages (see setup docs). A plain `pip install -r requirements.txt` may fail on the `tenacity` pin.
+Install `mega.py==1.0.8` with `--no-deps` after other packages (see setup docs). Pin `pikpakapi==0.1.11` the same as `requirements.txt`. A plain `pip install -r requirements.txt` may fail on the `tenacity` pin.
 
 ## Commit messages
 

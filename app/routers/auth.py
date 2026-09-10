@@ -24,11 +24,13 @@ async def auth_status() -> AuthStatus:
         mega=AuthProviderStatus(
             connected=mega_adapter.is_authenticated(),
             username=mega_adapter.username,
+            error=None if mega_adapter.is_authenticated() else mega_adapter.last_error,
             totp_configured=mega_adapter.totp_configured,
         ),
         pikpak=AuthProviderStatus(
             connected=pikpak_adapter.is_authenticated(),
             username=pikpak_adapter.username,
+            error=None if pikpak_adapter.is_authenticated() else pikpak_adapter.last_error,
             totp_configured=False,
         ),
     )

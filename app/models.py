@@ -28,6 +28,7 @@ class AuthProviderStatus(BaseModel):
 
     connected: bool
     username: str | None = None
+    # Last login/restore failure; omitted when connected. Never includes secrets.
     error: str | None = None
     # True when a TOTP secret is saved (never return the secret itself)
     totp_configured: bool = False

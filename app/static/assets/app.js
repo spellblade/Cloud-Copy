@@ -103,6 +103,16 @@
         form.classList.remove("hidden");
         connected.classList.add("hidden");
       }
+      const errEl = $(`#${p}AuthError`);
+      if (errEl) {
+        if (!st.connected && st.error) {
+          errEl.textContent = st.error;
+          errEl.classList.remove("hidden");
+        } else {
+          errEl.textContent = "";
+          errEl.classList.add("hidden");
+        }
+      }
     }
     const megaHint = $("#megaTotpHint");
     if (megaHint) {

@@ -100,6 +100,13 @@ class TransferCreateRequest(BaseModel):
     source_meta: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
+class TransferSkipped(BaseModel):
+    # One file that was not transferred (already on dest, or MEGA integrity).
+
+    name: str
+    reason: str
+
+
 class TransferJob(BaseModel):
     # In-memory transfer record: progress, current file, stage, and cancel/retry state.
 
@@ -117,6 +124,7 @@ class TransferJob(BaseModel):
     current_file: str | None = None
     message: str | None = None
     error: str | None = None
+    skipped: list[TransferSkipped] = Field(default_factory=list)
     stage: TransferStage | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
-from app.models import Direction, TransferJob, TransferStage, TransferStatus
-from app.services.mega_client import mega_adapter
+from app.models import Direction, TransferJob, TransferSkipped, TransferStage, TransferStatus
+from app.services.mega_client import MegaIntegrityError, mega_adapter
 from app.services.naming import require_folder_name
 from app.services.pikpak_client import pikpak_adapter
 
@@ -268,6 +268,7 @@ class TransferService:
         job.files_done = 0
         job.files_total = 0
         job.error = None
+        job.skipped = []
         job.message = "Re-queued"
         job.current_file = None
         job.stage = TransferStage.queued
@@ -415,7 +416,10 @@ class TransferService:
             else:
                 job.status = TransferStatus.completed
                 job.progress = 100.0
-                job.message = "Completed"
+                n_skip = len(job.skipped)
+                job.message = (
+                    f"Completed ({n_skip} skipped)" if n_skip else "Completed"
+                )
             await self._notify(job)
         finally:
             _rmtree_retry(temp_root)
@@ -501,7 +505,7 @@ class TransferService:
             if dest_files is None:
                 return
         if self._dest_has_complete_copy(dest_files, file_name, source_size):
-            job.message = f"Skipping {file_name} (already on dest)"
+            self._record_skip(job, file_name, "already on dest")
             job.bytes_done = int(source_size or 0)
             job.bytes_total = int(source_size or 0)
             self._refresh_progress(job)
@@ -523,9 +527,14 @@ class TransferService:
             job.stage = TransferStage.download
             job.bytes_done = 0
             job.bytes_total = 0
-            local = await self._await_step(
-                job, src.download_to_path(file_id, work, on_progress=on_dl)
-            )
+            try:
+                local = await self._await_step(
+                    job, src.download_to_path(file_id, work, on_progress=on_dl)
+                )
+            except MegaIntegrityError as exc:
+                self._record_skip(job, file_name, str(exc))
+                await self._notify(job)
+                return
             if local is None or self._cancelled(job.id):
                 job.message = "Cancelled"
                 await self._notify(job)
@@ -557,6 +566,10 @@ class TransferService:
             await self._notify(job)
         finally:
             _rmtree_retry(work)
+
+    def _record_skip(self, job: TransferJob, file_name: str, reason: str) -> None:
+        job.skipped.append(TransferSkipped(name=file_name, reason=reason))
+        job.message = f"Skipping {file_name} ({reason})"
 
     def has_active_transfers(self) -> bool:
         # True if any job is queued or running (blocks temp clear unless forced).

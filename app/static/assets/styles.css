@@ -551,6 +551,18 @@ button.danger {
   display: none !important;
 }
 
+.job-skipped {
+  margin: 6px 0 8px;
+  padding-left: 1.2em;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.job-skipped li {
+  margin: 2px 0;
+}
+
 /* --- Transfer jobs --- */
 
 .jobs {

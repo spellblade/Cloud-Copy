@@ -6,6 +6,7 @@ import pytest
 
 from app.models import FileNode, TransferJob, TransferStage, TransferStatus
 from app.services import transfer_service as ts_mod
+from app.services.mega_client import MegaIntegrityError
 from app.services.transfer_service import TransferService, _mark_failed
 
 
@@ -482,6 +483,8 @@ async def test_skip_dest_file_same_name_and_size(monkeypatch, tmp_path):
     assert src.downloads == ["b"]
     assert [u[1] for u in dst.uploads] == ["b.txt"]
     assert job.files_done == 2
+    assert any(s.name == "a.txt" and "already on dest" in s.reason for s in job.skipped)
+    assert "skipped" in (job.message or "").lower()
 
 
 @pytest.mark.asyncio
@@ -495,3 +498,57 @@ async def test_numbered_dest_suffix_is_not_the_original(monkeypatch, tmp_path):
     assert job.status == TransferStatus.completed
     assert src.downloads == ["a", "b"]
     assert [u[1] for u in dst.uploads] == ["a.txt", "b.txt"]
+
+
+class _IntegrityFailSrc:
+    def __init__(self) -> None:
+        self.nodes = {
+            "bad": FileNode(id="bad", name="bad.bin", is_dir=False, size=10),
+            "ok": FileNode(id="ok", name="ok.bin", is_dir=False, size=10),
+        }
+        self.downloads: list[str] = []
+
+    def is_authenticated(self) -> bool:
+        return True
+
+    async def get_node(self, file_id: str) -> FileNode:
+        return self.nodes[file_id]
+
+    async def download_to_path(self, file_id: str, dest_dir: Path, on_progress=None) -> Path:
+        self.downloads.append(file_id)
+        if file_id == "bad":
+            raise MegaIntegrityError("MEGA download integrity check failed (MAC mismatch)")
+        node = self.nodes[file_id]
+        path = dest_dir / node.name
+        path.write_bytes(b"x" * node.size)
+        if on_progress:
+            on_progress(node.size, node.size)
+        return path
+
+
+@pytest.mark.asyncio
+async def test_mega_integrity_skip_continues_job(monkeypatch, tmp_path):
+    src, dst = _IntegrityFailSrc(), _DstRecorder()
+    monkeypatch.setattr(ts_mod, "mega_adapter", src)
+    monkeypatch.setattr(ts_mod, "pikpak_adapter", dst)
+    monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
+    svc = TransferService()
+    job = TransferJob(
+        id="job-mac",
+        direction="mega_to_pikpak",
+        source_ids=["bad", "ok"],
+        dest_parent_id="dest-root",
+        source_meta={
+            "bad": {"name": "bad.bin", "is_dir": False, "size": 10},
+            "ok": {"name": "ok.bin", "is_dir": False, "size": 10},
+        },
+    )
+    svc.jobs[job.id] = job
+    svc._cancel_flags[job.id] = asyncio.Event()
+    await svc._run_job(job)
+    assert job.status == TransferStatus.completed
+    assert src.downloads == ["bad", "ok"]
+    assert [u[1] for u in dst.uploads] == ["ok.bin"]
+    assert job.skipped[0].name == "bad.bin"
+    assert "MAC" in job.skipped[0].reason
+    assert "1 skipped" in (job.message or "")

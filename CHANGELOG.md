@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- MEGA uploads include the official file fingerprint so Desktop no longer reports “fingerprint missing”
+- Transfer jobs skip MEGA files that fail integrity (MAC) and list them on the job card
+
 ### Changed
 
 - Install scripts, README, and CI pin ``pikpakapi`` and ``mega.py`` to the versions in ``requirements.txt``

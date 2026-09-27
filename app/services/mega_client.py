@@ -92,6 +92,10 @@ def _map_mega_login_error(err: Any) -> str:
     return _map_mega_error(err, context="MEGA login")
 
 
+class MegaIntegrityError(RuntimeError):
+    """Download cannot be verified (MAC / missing key). Transfer should skip this file."""
+
+
 class MegaAdapter:
     # Adapter around mega.py (sync API wrapped for asyncio).
 
@@ -450,6 +454,8 @@ class MegaAdapter:
                 return self._download_file_windows_safe(
                     m, node, dest_dir, name, on_progress
                 )
+            except MegaIntegrityError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 # Surface MEGA quota etc. clearly
                 raise RuntimeError(_map_mega_error(exc, context="MEGA download")) from exc
@@ -481,6 +487,10 @@ class MegaAdapter:
 
         file_url = prefer_https_storage_url(str(file_data["g"]))
         file_size = int(file_data.get("s") or file_node.get("s") or 0)
+        if "k" not in file_node or "iv" not in file_node or "meta_mac" not in file_node:
+            raise MegaIntegrityError(
+                "MEGA file is missing encryption MAC (undecryptable or corrupted)"
+            )
         k = file_node["k"]
         iv = file_node["iv"]
         meta_mac = file_node["meta_mac"]
@@ -542,7 +552,9 @@ class MegaAdapter:
 
                 file_mac = str_to_a32(mac_str)
                 if (file_mac[0] ^ file_mac[1], file_mac[2] ^ file_mac[3]) != meta_mac:
-                    raise ValueError("MEGA download integrity check failed (MAC mismatch)")
+                    raise MegaIntegrityError(
+                        "MEGA download integrity check failed (MAC mismatch)"
+                    )
 
                 if final_path.exists():
                     final_path.unlink()
@@ -629,6 +641,7 @@ class MegaAdapter:
             makebyte,
             str_to_a32,
         )
+        from app.services.mega_fingerprint import file_attribs as _file_attribs
 
         file_size = local_path.stat().st_size
         ul_resp = mega._api_request({"a": "u", "s": file_size})
@@ -696,7 +709,7 @@ class MegaAdapter:
 
         file_mac = str_to_a32(mac_str)
         meta_mac = (file_mac[0] ^ file_mac[1], file_mac[2] ^ file_mac[3])
-        attribs = {"n": dest_filename}
+        attribs = _file_attribs(dest_filename, local_path)
         encrypt_attribs = base64_url_encode(encrypt_attr(attribs, ul_key[:4]))
         key = [
             ul_key[0] ^ ul_key[4],

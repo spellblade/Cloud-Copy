@@ -177,6 +177,28 @@ async def test_folder_meta_copies_children(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_transfer_folder_rejects_separator_in_name(monkeypatch, tmp_path):
+    src, dst = _SrcFolderTree(), _DstRecorder()
+    monkeypatch.setattr(ts_mod, "mega_adapter", src)
+    monkeypatch.setattr(ts_mod, "pikpak_adapter", dst)
+    monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
+    svc = TransferService()
+    job = TransferJob(
+        id="job-bad-name",
+        direction="mega_to_pikpak",
+        source_ids=["folder1"],
+        dest_parent_id="dest-root",
+        source_meta={"folder1": {"name": "Docs/evil", "is_dir": True}},
+    )
+    svc.jobs[job.id] = job
+    svc._cancel_flags[job.id] = asyncio.Event()
+    with pytest.raises(RuntimeError, match="cannot contain /"):
+        await svc._run_job(job)
+    assert dst.mkdirs == []
+    assert dst.uploads == []
+
+
+@pytest.mark.asyncio
 async def test_folder_without_is_dir_looks_up_node(monkeypatch, tmp_path):
     # If the UI omits is_dir, get_node still classifies the source as a folder.
     job, dst = await _run_folder_job(

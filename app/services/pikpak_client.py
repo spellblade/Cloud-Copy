@@ -15,6 +15,7 @@ import httpx
 
 from app.models import FileNode
 from app.services.credential_store import credential_store
+from app.services.naming import safe_local_name
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +383,7 @@ class PikPakAdapter:
         # Stream a PikPak file to ``dest_dir`` via the web content link.
         client = self._require()
         info = await client.get_download_url(file_id)
-        name = info.get("name") or file_id
+        name = safe_local_name(info.get("name") or file_id)
         size = int(info.get("size") or 0)
         url = info.get("web_content_link")
         if not url:

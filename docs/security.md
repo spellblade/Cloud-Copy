@@ -21,7 +21,7 @@ On **Windows**, `os.chmod` does not keep other local accounts out of the file. P
 
 - All cloud APIs over HTTPS.
 - MEGA plaintext exists on this machine during relay — inherent to any middle hop.
-- Integrity: PikPak gcid; MEGA MAC check on download. There is no end-to-end SHA-256 compare between clouds yet.
+- Integrity: PikPak gcid; MEGA MAC check on download. MEGA uploads set the official fingerprint attribute (``c``) so MEGA Desktop does not treat the file as corrupted. There is no end-to-end SHA-256 compare between clouds yet.
 
 ## Git
 

@@ -17,6 +17,7 @@ Local web app that transfers files between **MEGA** and **PikPak** in both direc
 - Live per-file download/upload progress (bar and byte counts, including MEGA upload chunks)
 - Cancel and retry jobs; the next queued transfer starts after cancel or fail
 - Retry skips dest files that already match; MEGA download retries timeouts; PikPak upload tries FORM first and retries SSL EOF
+- MEGA uploads set a file fingerprint; MEGA files that fail MAC check are skipped and listed on the job card
 - Session restore from local credential store (`~/.cloud-copy/`)
 
 ## Requirements

@@ -66,6 +66,8 @@ Local 1.0.6 review (not GitHub issues). Work sequence is **implementation order*
 
 **Deferred:** Phase 4 (F-008 clear TOTP without logout, F-007 login rate limit) and [#12](https://github.com/spellblade/Cloud-Copy/issues/12).
 
+MEGA fingerprint on upload + skip list for MAC failures: `feat/mega-fingerprint-skip` (before F-004).
+
 | Order | Finding | Resolved | Branch |
 |-------|---------|----------|--------|
 | 1 | F-002 Pin `pikpakapi` / `mega.py` in install scripts, README, and CI | No | `feat/dep-pins` |

@@ -7,6 +7,8 @@
 5. Click **Transfer selected**.
 6. Watch **Transfers** — the bar and byte counts should move while a file downloads or uploads. Cancel or retry as needed.
 
+If MEGA cannot verify a source file (MAC mismatch or missing encryption data), that file is **skipped** and listed on the job card. The rest of the job continues.
+
 ## New folder and Delete
 
 Both panes have **New folder** and **Delete**.

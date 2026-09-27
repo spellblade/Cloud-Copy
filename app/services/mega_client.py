@@ -12,6 +12,7 @@ from typing import Any
 
 from app.models import FileNode
 from app.services.credential_store import credential_store
+from app.services.naming import safe_local_name
 from app.services.totp_util import get_fresh_totp_code, normalize_totp_secret
 
 logger = logging.getLogger(__name__)
@@ -441,7 +442,7 @@ class MegaAdapter:
         await self._refresh_files_cache()
         pair = self._get_node_pair(file_id)
         node = pair[1]
-        name = (node.get("a") or {}).get("n") or file_id
+        name = safe_local_name((node.get("a") or {}).get("n") or file_id)
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         def _download() -> Path:

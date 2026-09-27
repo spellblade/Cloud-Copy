@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Auth status surfaces the last MEGA/PikPak login or session-restore error on the login card (F-011)
 - Credential file is written atomically; on POSIX the data dir is ``0700`` and the file is ``0600`` (F-001, F-006)
+- Local download paths strip parent segments; transfer mkdir rejects ``/`` in folder names (F-005)
 
 ## [1.0.6] - 2026-09-08
 

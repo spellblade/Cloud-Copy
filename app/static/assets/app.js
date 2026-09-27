@@ -424,6 +424,16 @@
           ${escapeHtml(job.message || "")}
           ${job.error ? " · " + escapeHtml(job.error) : ""}
         </div>
+        ${
+          job.skipped && job.skipped.length
+            ? `<ul class="job-skipped">${job.skipped
+                .map(
+                  (s) =>
+                    `<li>${escapeHtml(s.name)} — ${escapeHtml(s.reason)}</li>`
+                )
+                .join("")}</ul>`
+            : ""
+        }
         <div class="progress"><span style="width:${pct}%"></span></div>
         <div class="job-actions"></div>
       `;

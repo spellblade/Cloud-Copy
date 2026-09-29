@@ -37,7 +37,7 @@ You do not need to disable 2FA.
 
 ## Cancel
 
-Cancel updates the job immediately. A download or upload already in a worker thread finishes the current step, then the job stops (it is not a hard kill of the OS process).
+Cancel updates the job immediately. A download or upload already in a worker thread finishes the current step, then the job stops (it is not a hard kill of the OS process). Temp files for that step stay until the step finishes; **Clear temp** waits for that unless you pass `force`.
 
 ## Temp files
 
@@ -47,7 +47,7 @@ Relay files live under `~/.cloud-copy/temp/` (Windows: `C:\Users\<you>\.cloud-co
 - `GET /api/system/paths`
 - `POST /api/system/clear-temp`
 
-Do not clear temp while a transfer is mid-download.
+Clear temp refuses while a transfer is queued, running, or still writing after cancel, unless you pass `force`.
 
 ## MEGA quota
 

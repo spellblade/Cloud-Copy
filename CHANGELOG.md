@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.0.7] - 2026-09-29
+
+### Added
+
 - MEGA uploads include the official file fingerprint so Desktop no longer reports “fingerprint missing”
 - Transfer jobs skip MEGA files that fail integrity (MAC) and list them on the job card
 
@@ -21,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auth status surfaces the last MEGA/PikPak login or session-restore error on the login card (F-011)
 - Credential file is written atomically; on POSIX the data dir is ``0700`` and the file is ``0600`` (F-001, F-006)
 - Local download paths strip parent segments; transfer mkdir rejects ``/`` in folder names (F-005)
+- Cancel does not delete a job's temp directory while an abandoned download or upload is still writing (F-004)
+- Folder transfer fails cleanly beyond 200 nested levels (F-012)
 
 ## [1.0.6] - 2026-09-08
 
@@ -129,7 +139,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.3...v1.0.4

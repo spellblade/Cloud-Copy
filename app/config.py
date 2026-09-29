@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     app_name: str = "Cloud Copy"
+    # Login POSTs: per-IP sliding window (defense in depth if bind is not loopback).
+    auth_login_max_attempts: int = 10
+    auth_login_window_s: float = 60.0
     # Persist sessions under user home by default
     data_dir: Path | None = None
     temp_dir: Path | None = None

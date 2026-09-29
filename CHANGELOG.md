@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CI workflow grants ``GITHUB_TOKEN`` read-only contents (CodeQL)
+
+## [1.0.8] - 2026-09-29
+
+### Added
+
+- MEGA and PikPak login POSTs are rate-limited per IP (F-007)
+
+### Changed
+
+- MEGA file-tree fetch runs only after a mutation or a cache miss (F-003)
+
+### Fixed
+
 ## [1.0.7] - 2026-09-29
 
 ### Added
@@ -139,7 +153,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.4...v1.0.5

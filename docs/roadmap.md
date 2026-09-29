@@ -64,7 +64,7 @@ Work sequence (ease × risk × priority). **Branch** is a plain name (no link); 
 
 Local 1.0.6 review (not GitHub issues). Work sequence is **implementation order** (ease × risk), not P0 first. **Branch** is a plain name; use `—` until work starts.
 
-**Deferred:** Phase 4 (F-008 clear TOTP without logout, F-007 login rate limit) and [#12](https://github.com/spellblade/Cloud-Copy/issues/12).
+**Deferred:** F-008 (clear TOTP without logout) and [#12](https://github.com/spellblade/Cloud-Copy/issues/12).
 
 MEGA fingerprint on upload + skip list for MAC failures: `feat/mega-fingerprint-skip` (before F-004).
 
@@ -77,7 +77,8 @@ MEGA fingerprint on upload + skip list for MAC failures: `feat/mega-fingerprint-
 | 5 | F-001 + F-006 Credential file `0700`/`0600` (POSIX) and atomic write | Yes | `feat/dep-pins` |
 | 6 | F-005 Sanitize remote names before local paths and transfer mkdir | Yes | `feat/safe-names` |
 | 7 | F-004 (+ F-010, F-012) Cancel vs temp cleanup; dead lock; folder depth | Yes | `feat/cancel-cleanup` |
-| 8 | F-003 MEGA full-tree refresh only when dirty | No | — |
+| 8 | F-003 MEGA full-tree refresh only when dirty | No | `feat/mega-cache` |
+| 9 | F-007 Login rate limit on MEGA/PikPak POST | Yes | `feat/login-rate-limit` |
 
 - F-001 and F-006 are one change (`CredentialStore._write`).
 - F-014 must land before F-003.

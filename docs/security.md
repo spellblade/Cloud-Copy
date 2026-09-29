@@ -4,6 +4,8 @@
 
 The server binds to **127.0.0.1** by default. Do not expose it to the network without authentication.
 
+`POST /api/auth/mega` and `POST /api/auth/pikpak` allow 10 attempts per IP per 60 seconds (429 with `Retry-After` after that). Status and logout are not limited.
+
 ## Secrets on disk
 
 | Path | Contents |

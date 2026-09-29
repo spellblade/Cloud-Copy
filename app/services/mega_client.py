@@ -104,6 +104,7 @@ class MegaAdapter:
         self._username: str | None = None
         self._totp_secret: str | None = None
         self._files_cache: dict[str, Any] = {}
+        self._cache_dirty: bool = True
         self.last_error: str | None = None
 
     @property
@@ -210,6 +211,7 @@ class MegaAdapter:
                 payload["totp_secret"] = normalize_totp_secret(str(final_secret))
                 self._totp_secret = payload["totp_secret"]
             credential_store.set("mega", payload)
+        self._cache_dirty = True
         await self._refresh_files_cache()
 
     @staticmethod
@@ -311,6 +313,7 @@ class MegaAdapter:
         self._username = None
         self._totp_secret = None
         self._files_cache = {}
+        self._cache_dirty = True
         self.last_error = None
         credential_store.delete("mega")
 
@@ -321,13 +324,16 @@ class MegaAdapter:
         return self._m
 
     async def _refresh_files_cache(self) -> None:
-        # Reload MEGA's full node map on a worker thread (sync mega.py call).
+        # Reload MEGA's full node map only when marked dirty (empty is a valid cache).
+        if not self._cache_dirty:
+            return
         m = self._require()
 
         def _get() -> dict[str, Any]:
             return m.get_files() or {}
 
         self._files_cache = await asyncio.to_thread(_get)
+        self._cache_dirty = False
 
     def _root_id(self) -> str:
         # Cloud-drive root handle (type 2), used when listing with no parent.
@@ -382,13 +388,14 @@ class MegaAdapter:
             # try refresh sync
             m = self._require()
             self._files_cache = m.get_files() or {}
+            self._cache_dirty = False
             node = self._files_cache.get(file_id)
         if not node:
             raise FileNotFoundError(f"MEGA file not found: {file_id}")
         return file_id, node
 
     async def get_node(self, file_id: str) -> FileNode:
-        # Refresh cache and return one node (used when transfer meta lacks a name).
+        # Return one node from the cache (refresh if dirty or missing).
         await self._refresh_files_cache()
         handle, node = self._get_node_pair(file_id)
         return self._node_to_file(handle, node)
@@ -415,6 +422,7 @@ class MegaAdapter:
             return files[0]["h"]
 
         folder_id = await asyncio.to_thread(_mkdir)
+        self._cache_dirty = True
         await self._refresh_files_cache()
         return await self.get_node(folder_id)
 
@@ -429,6 +437,7 @@ class MegaAdapter:
                 raise RuntimeError(_map_mega_error(exc, context="MEGA delete")) from exc
 
         await asyncio.to_thread(_delete)
+        self._cache_dirty = True
         await self._refresh_files_cache()
 
     async def download_to_path(
@@ -606,6 +615,7 @@ class MegaAdapter:
                 raise RuntimeError(_map_mega_error(exc, context="MEGA upload")) from exc
 
         await asyncio.to_thread(_upload)
+        self._cache_dirty = True
         await self._refresh_files_cache()
         for handle, node in self._files_cache.items():
             attrs = node.get("a") or {}

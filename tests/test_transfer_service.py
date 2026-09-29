@@ -7,7 +7,7 @@ import pytest
 from app.models import FileNode, TransferJob, TransferStage, TransferStatus
 from app.services import transfer_service as ts_mod
 from app.services.mega_client import MegaIntegrityError
-from app.services.transfer_service import TransferService, _mark_failed
+from app.services.transfer_service import MAX_FOLDER_DEPTH, TransferService, _mark_failed
 
 
 @pytest.mark.asyncio
@@ -196,6 +196,55 @@ async def test_transfer_folder_rejects_separator_in_name(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError, match="cannot contain /"):
         await svc._run_job(job)
     assert dst.mkdirs == []
+
+
+class _DeepFolderSrc:
+    # Chain of nested folders with no files, used to hit the depth cap.
+
+    def __init__(self, depth: int) -> None:
+        self.nodes: dict[str, FileNode] = {}
+        self.children: dict[str, list[FileNode]] = {}
+        for i in range(depth):
+            nid = f"d{i}"
+            self.nodes[nid] = FileNode(id=nid, name=f"L{i}", is_dir=True)
+            if i + 1 < depth:
+                child = FileNode(id=f"d{i + 1}", name=f"L{i + 1}", is_dir=True)
+                self.children[nid] = [child]
+            else:
+                self.children[nid] = []
+
+    def is_authenticated(self) -> bool:
+        return True
+
+    async def get_node(self, file_id: str) -> FileNode:
+        return self.nodes[file_id]
+
+    async def list_folder(self, folder_id: str | None) -> list[FileNode]:
+        return list(self.children.get(folder_id or "", []))
+
+    async def download_to_path(self, file_id: str, dest_dir: Path, on_progress=None) -> Path:
+        raise AssertionError("deep-folder fixture has no files")
+
+
+@pytest.mark.asyncio
+async def test_transfer_folder_rejects_excessive_nesting(monkeypatch, tmp_path):
+    src = _DeepFolderSrc(MAX_FOLDER_DEPTH + 2)
+    dst = _DstRecorder()
+    monkeypatch.setattr(ts_mod, "mega_adapter", src)
+    monkeypatch.setattr(ts_mod, "pikpak_adapter", dst)
+    monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
+    svc = TransferService()
+    job = TransferJob(
+        id="job-deep",
+        direction="mega_to_pikpak",
+        source_ids=["d0"],
+        dest_parent_id="dest-root",
+        source_meta={"d0": {"name": "L0", "is_dir": True}},
+    )
+    svc.jobs[job.id] = job
+    svc._cancel_flags[job.id] = asyncio.Event()
+    with pytest.raises(RuntimeError, match="Folder nesting too deep"):
+        await svc._run_job(job)
     assert dst.uploads == []
 
 
@@ -423,6 +472,92 @@ async def test_cancel_starts_next_queued_job(monkeypatch, tmp_path):
 
     src.release.set()
     assert svc.get_job(job1.id).status == TransferStatus.cancelled
+
+
+@pytest.mark.asyncio
+async def test_cancel_defers_temp_cleanup_until_abandoned_step_finishes(
+    monkeypatch, tmp_path
+):
+    src = _BlockFirstDownloadSrc()
+    monkeypatch.setattr(ts_mod, "mega_adapter", src)
+    monkeypatch.setattr(ts_mod, "pikpak_adapter", _FastDst())
+    monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
+
+    svc = TransferService()
+    job = await svc.create_job(
+        direction="mega_to_pikpak",
+        source_ids=["slow"],
+        dest_parent_id=None,
+        source_meta={"slow": {"name": "slow.bin", "is_dir": False}},
+    )
+    await asyncio.wait_for(src.started.wait(), timeout=2)
+    await svc.cancel(job.id)
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if svc._abandoned.get(job.id):
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("abandoned step was not registered")
+
+    job_temp = tmp_path / job.id
+    work_dirs = [p for p in job_temp.iterdir() if p.is_dir()] if job_temp.exists() else []
+    assert work_dirs, "work dir should remain while the abandoned download is blocked"
+    assert svc.has_active_transfers()
+    with pytest.raises(RuntimeError, match="Cannot clear temp"):
+        svc.clear_temp_dir()
+
+    src.release.set()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if not svc._abandoned and not job_temp.exists():
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("temp dir was not cleaned after abandoned download finished")
+    assert not svc.has_active_transfers()
+
+
+@pytest.mark.asyncio
+async def test_clear_temp_force_deletes_abandoned_work(monkeypatch, tmp_path):
+    src = _BlockFirstDownloadSrc()
+    monkeypatch.setattr(ts_mod, "mega_adapter", src)
+    monkeypatch.setattr(ts_mod, "pikpak_adapter", _FastDst())
+    monkeypatch.setattr(ts_mod.settings, "temp_dir", tmp_path)
+
+    svc = TransferService()
+    job = await svc.create_job(
+        direction="mega_to_pikpak",
+        source_ids=["slow"],
+        dest_parent_id=None,
+        source_meta={"slow": {"name": "slow.bin", "is_dir": False}},
+    )
+    await asyncio.wait_for(src.started.wait(), timeout=2)
+    await svc.cancel(job.id)
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if svc._abandoned.get(job.id):
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("abandoned step was not registered")
+
+    job_temp = tmp_path / job.id
+    assert job_temp.exists()
+    result = svc.clear_temp_dir(force=True)
+    assert result["removed_entries"] >= 1
+    assert not job_temp.exists()
+
+    src.release.set()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if not svc._abandoned:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("abandoned registry was not cleared after force delete")
 
 
 class _TwoFileSrc:

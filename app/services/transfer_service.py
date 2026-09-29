@@ -43,6 +43,16 @@ def _rmtree_retry(path: Path, attempts: int = 5, delay: float = 0.25) -> None:
         logger.warning("Could not fully clean temp dir %s: %s", path, last_exc)
 
 
+MAX_FOLDER_DEPTH = 200
+
+
+def _consume_abandoned(done: asyncio.Task) -> None:
+    try:
+        done.result()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("abandoned step finished: %s", exc)
+
+
 class TransferService:
     # In-memory job store plus one asyncio worker that runs jobs one at a time.
 
@@ -52,7 +62,8 @@ class TransferService:
         self._cancel_flags: dict[str, asyncio.Event] = {}
         self._listeners: list[Listener] = []
         self._worker_task: asyncio.Task | None = None
-        self._lock = asyncio.Lock()
+        # job id -> abandoned (work dir, task); mutated only on the event loop
+        self._abandoned: dict[str, list[tuple[Path, asyncio.Task]]] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._last_notify: dict[str, float] = {}
 
@@ -135,7 +146,9 @@ class TransferService:
         finished = job.bytes_total > 0 and done >= job.bytes_total
         self._schedule_notify(job, force=finished)
 
-    async def _await_step(self, job: TransferJob, coro: Any) -> Any:
+    async def _await_step(
+        self, job: TransferJob, coro: Any, *, cleanup: Path | None = None
+    ) -> Any:
         # Wait for an adapter call, but stop waiting if the job is cancelled.
 
         # MEGA/PikPak work often runs in a thread that cannot be killed. We leave
@@ -148,14 +161,10 @@ class TransferService:
                         "Job %s cancelled; abandoning in-flight step so the queue can continue",
                         job.id,
                     )
-
-                    def _consume(done: asyncio.Task) -> None:
-                        try:
-                            done.result()
-                        except Exception as exc:  # noqa: BLE001
-                            logger.debug("abandoned step finished: %s", exc)
-
-                    task.add_done_callback(_consume)
+                    if cleanup is not None:
+                        self._register_abandoned(job.id, cleanup, task)
+                    else:
+                        task.add_done_callback(_consume_abandoned)
                     return None
                 await asyncio.wait({task}, timeout=0.5)
             return task.result()
@@ -163,6 +172,52 @@ class TransferService:
             if not task.done():
                 task.add_done_callback(lambda t: t.exception())
             raise
+
+    def _has_abandoned_under(self, path: Path) -> bool:
+        for entries in self._abandoned.values():
+            for abandoned, _task in entries:
+                try:
+                    abandoned.relative_to(path)
+                    return True
+                except ValueError:
+                    continue
+        return False
+
+    def _rmtree_if_idle(self, path: Path) -> None:
+        if self._has_abandoned_under(path):
+            return
+        _rmtree_retry(path)
+
+    def _register_abandoned(
+        self, job_id: str, path: Path, task: asyncio.Task
+    ) -> None:
+        self._abandoned.setdefault(job_id, []).append((path, task))
+
+        def _done(done: asyncio.Task, *, jid: str = job_id, p: Path = path) -> None:
+            self._on_abandoned_done(jid, p, done)
+
+        task.add_done_callback(_done)
+
+    def _on_abandoned_done(
+        self, job_id: str, path: Path, task: asyncio.Task
+    ) -> None:
+        _consume_abandoned(task)
+        entries = [
+            item for item in self._abandoned.get(job_id, []) if item[1] is not task
+        ]
+        if entries:
+            self._abandoned[job_id] = entries
+        else:
+            self._abandoned.pop(job_id, None)
+        _rmtree_retry(path)
+        if job_id in self._abandoned:
+            return
+        job = self.jobs.get(job_id)
+        if job is None or job.status not in (
+            TransferStatus.queued,
+            TransferStatus.running,
+        ):
+            _rmtree_retry(settings.resolved_temp_dir() / job_id)
 
     @staticmethod
     def _dest_has_complete_copy(
@@ -422,7 +477,7 @@ class TransferService:
                 )
             await self._notify(job)
         finally:
-            _rmtree_retry(temp_root)
+            self._rmtree_if_idle(temp_root)
 
     async def _transfer_folder(
         self,
@@ -433,10 +488,13 @@ class TransferService:
         folder_name: str,
         dest_parent_id: str | None,
         temp_root: Path,
+        depth: int = 0,
     ) -> None:
     # Create the dest folder, list source children, and recurse files/subfolders.
         if self._cancelled(job.id):
             return
+        if depth > MAX_FOLDER_DEPTH:
+            raise RuntimeError("Folder nesting too deep to transfer")
         try:
             folder_name = require_folder_name(folder_name)
         except ValueError as exc:
@@ -465,7 +523,14 @@ class TransferService:
             await self._notify(job)
             if child.is_dir:
                 await self._transfer_folder(
-                    job, src, dst, child.id, child.name, new_parent, temp_root
+                    job,
+                    src,
+                    dst,
+                    child.id,
+                    child.name,
+                    new_parent,
+                    temp_root,
+                    depth=depth + 1,
                 )
             else:
                 await self._transfer_file(
@@ -529,7 +594,9 @@ class TransferService:
             job.bytes_total = 0
             try:
                 local = await self._await_step(
-                    job, src.download_to_path(file_id, work, on_progress=on_dl)
+                    job,
+                    src.download_to_path(file_id, work, on_progress=on_dl),
+                    cleanup=work,
                 )
             except MegaIntegrityError as exc:
                 self._record_skip(job, file_name, str(exc))
@@ -558,6 +625,7 @@ class TransferService:
                     name=file_name,
                     on_progress=on_ul,
                 ),
+                cleanup=work,
             )
             if uploaded is None or self._cancelled(job.id):
                 job.message = "Cancelled"
@@ -565,14 +633,16 @@ class TransferService:
                 return
             await self._notify(job)
         finally:
-            _rmtree_retry(work)
+            self._rmtree_if_idle(work)
 
     def _record_skip(self, job: TransferJob, file_name: str, reason: str) -> None:
         job.skipped.append(TransferSkipped(name=file_name, reason=reason))
         job.message = f"Skipping {file_name} ({reason})"
 
     def has_active_transfers(self) -> bool:
-        # True if any job is queued or running (blocks temp clear unless forced).
+        # True if a job is queued/running or an abandoned step is still writing.
+        if self._abandoned:
+            return True
         return any(
             j.status in (TransferStatus.queued, TransferStatus.running)
             for j in self.jobs.values()
@@ -582,7 +652,8 @@ class TransferService:
         # Delete contents of the app temp directory. Refuses if jobs are active unless force.
         if self.has_active_transfers() and not force:
             raise RuntimeError(
-                "Cannot clear temp while transfers are queued or running. "
+                "Cannot clear temp while transfers are queued, running, "
+                "or still writing after cancel. "
                 "Cancel them first, or pass force=true."
             )
         temp = settings.resolved_temp_dir()
@@ -598,6 +669,9 @@ class TransferService:
             }
         for child in list(temp.iterdir()):
             try:
+                if not force and self._has_abandoned_under(child):
+                    errors.append(f"{child.name}: skipped (abandoned writer)")
+                    continue
                 if child.is_file():
                     size = child.stat().st_size
                     child.unlink(missing_ok=True)

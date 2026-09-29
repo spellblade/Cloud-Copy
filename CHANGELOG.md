@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.0.8] - 2026-09-29
+
+### Added
+
 - MEGA and PikPak login POSTs are rate-limited per IP (F-007)
 
 ### Changed
@@ -143,7 +151,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.4...v1.0.5

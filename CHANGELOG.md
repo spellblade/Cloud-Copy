@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.0.7] - 2026-09-29
+
+### Added
+
 - MEGA uploads include the official file fingerprint so Desktop no longer reports “fingerprint missing”
 - Transfer jobs skip MEGA files that fail integrity (MAC) and list them on the job card
 
@@ -131,7 +139,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/spellblade/Cloud-Copy/compare/v1.0.3...v1.0.4

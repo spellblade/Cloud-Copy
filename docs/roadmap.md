@@ -77,8 +77,8 @@ MEGA fingerprint on upload + skip list for MAC failures: `feat/mega-fingerprint-
 | 5 | F-001 + F-006 Credential file `0700`/`0600` (POSIX) and atomic write | Yes | `feat/dep-pins` |
 | 6 | F-005 Sanitize remote names before local paths and transfer mkdir | Yes | `feat/safe-names` |
 | 7 | F-004 (+ F-010, F-012) Cancel vs temp cleanup; dead lock; folder depth | Yes | `feat/cancel-cleanup` |
-| 8 | F-003 MEGA full-tree refresh only when dirty | No | — |
-| 9 | F-007 Login rate limit on MEGA/PikPak POST | No | `feat/login-rate-limit` |
+| 8 | F-003 MEGA full-tree refresh only when dirty | No | `feat/mega-cache` |
+| 9 | F-007 Login rate limit on MEGA/PikPak POST | Yes | `feat/login-rate-limit` |
 
 - F-001 and F-006 are one change (`CredentialStore._write`).
 - F-014 must land before F-003.
